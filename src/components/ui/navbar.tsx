@@ -2,28 +2,13 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { useState } from 'react'
+
+//@ts-ignore
 import { ChevronDownIcon } from '@heroicons/react/24/solid'
-import Eth from '../../../public/vercel.svg'
-import Logo from '../../../public/vercel.svg'
-import { createAppKit, useAppKit, useAppKitAccount } from '@reown/appkit/react'
-import { projectId, metadata, networks, wagmiAdapter } from '../../config/reown'
+import {  useAppKit, useAppKitAccount, useDisconnect } from '@reown/appkit/react'
 
 
-const generalConfig = {
-  projectId,
-  networks,
-  metadata,
-  themeMode: 'dark' as const,
-}
 
-// Create modal
-createAppKit({
-  adapters: [wagmiAdapter],
-  ...generalConfig,
-  features: {
-    analytics: false
-  }
-})
 // const { open, close } = useAppKit()
 
 // const { address, isConnected, caipAddress, status, embeddedWalletInfo } =
@@ -35,11 +20,13 @@ export function Navbar() {
   const { address, isConnected, caipAddress, status, embeddedWalletInfo } =
   useAppKitAccount();
 
+  const { disconnect } = useDisconnect();
+
   const [isEarnOpen, setIsEarnOpen] = useState(false);
   return (
     <header>
       <div className='leftH'>
-        <Image src={Logo} alt='eth' className='logo' />
+        <Image src={"vercel.svg"} alt='eth' className='logo' width={100} height={100}/>
         <Link href='/' className='link'>
           <div className='headerItem'>Swap</div>  
         </Link>
@@ -93,7 +80,7 @@ export function Navbar() {
             <div className='connectButton group-hover:hidden' onClick={() => close()}>
               {address?.slice(0, 6)}...{address?.slice(-4)}
             </div>
-            <div className='connectButton hidden group-hover:block' onClick={() => close()}>
+            <div className='connectButton hidden group-hover:block' onClick={async ()=> await disconnect()}>
               Logout
             </div>
           </div>

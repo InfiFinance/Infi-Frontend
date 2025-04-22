@@ -4,7 +4,7 @@ import type { AppKitNetwork } from '@reown/appkit/networks'
 import { defineChain } from '@reown/appkit/networks';
 
 // Define the custom network
-const customNetwork = defineChain({
+export const customNetwork = defineChain({
   id: 50002,
   caipNetworkId: 'eip155:123456789',
   chainNamespace: 'eip155',

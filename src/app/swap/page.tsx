@@ -1,11 +1,18 @@
 "use client";
 
 import { Input, Popover, Radio, Modal, message } from 'antd';
+const infiRouterAddress = require('../../contract/aggregator/pharos/InfiRouter.json').address
+const infiRouterAbi = require('../../contract/aggregator/pharos/InfiRouter.json').abi
+
+//@ts-ignore
 import { ArrowDownOutlined, SettingOutlined } from '@ant-design/icons';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { Token, TokenPrice, TxDetails } from '@/types/token';
 import TokenSelectionModal from '@/components/TokenSelectionModal';
+import { useReadContract } from "wagmi";
+import { useAppKitAccount, useAppKitProvider } from '@reown/appkit/react';
+import { BrowserProvider, Contract, Eip1193Provider, ethers, formatUnits } from "ethers";
 
 interface SwapProps {
   address?: string;
@@ -14,22 +21,45 @@ interface SwapProps {
 
 const tokenList: Token[] = [
   {
-    ticker: "USDC",
-    img: "https://cdn.moralis.io/eth/0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.png",
-    name: "USD Coin",
-    address: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
-    decimals: 6
+    ticker: "RAMBO",
+    img: "/token.png",
+    name: "Rambo",
+    address: "0x04fe091c78100eb1Fb6d5b94277De88F76EE21d4",
+    decimals: 18
   },
   {
-    ticker: "LINK",
-    img: "https://cdn.moralis.io/eth/0x514910771af9ca656af840dff83e8264ecf986ca.png",
-    name: "Chainlink",
-    address: "0x514910771af9ca656af840dff83e8264ecf986ca",
+    ticker: "BOBA",
+    img: "/token.png",
+    name: "Bobafet",
+    address: "0x39645603a6cD436e273bbd5e3AD001820e7be279",
+    decimals: 18
+  },
+  {
+    ticker: "DAWG",
+    img: "/token.png",
+    name: "Dawg",
+    address: "0xF526Abb89db0fFE7176db531417ff9108Ef3Ed99",
+    decimals: 18
+  },
+  {
+    ticker: "OCTO",
+    img: "/token.png",
+    name: "Octopus",
+    address: "0xAaCc2185ff895E95B9B17B0809f7Febd99394501",
+    decimals: 18
+  },
+  {
+    ticker: "TEAM",
+    img: "/token.png",
+    name: "Teammate",
+    address: "0xec5939822a1D9a9E0E089Fe9eBCb75A5F29D23d2",
     decimals: 18
   }
 ];
 
-export default function Swap({ address, isConnected }: SwapProps) {
+
+
+export default function Swap() {
   const [slippage, setSlippage] = useState<number>(2.5);
   const [messageApi, contextHolder] = message.useMessage();
   const [tokenOneAmount, setTokenOneAmount] = useState<string>('0');
@@ -38,33 +68,141 @@ export default function Swap({ address, isConnected }: SwapProps) {
   const [tokenTwo, setTokenTwo] = useState<Token>(tokenList[1]);
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [changeToken, setChangeToken] = useState<number>(1);
-  const [prices, setPrices] = useState<TokenPrice | null>(null);
+  // const [prices, setPrices] = useState<TokenPrice | null>(null);
   const [txDetails, setTxDetails] = useState<TxDetails>({
     to: null,
     data: null,
     value: null
   });
 
+  const { address, caipAddress, isConnected,  } = useAppKitAccount();
+  const [ethersProvider, setEthersProvider] = useState<BrowserProvider | null>(null);
+  const { walletProvider } = useAppKitProvider("eip155");
+
+  const [isQuerying, setIsQuerying] = useState(false); // Optional: for loading indicator
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Ref to store timeout ID
+
+  useEffect(() => {
+    // Only create the BrowserProvider if walletProvider is available
+    if (walletProvider) {
+      try {
+        // The type assertion might still be useful if your hook doesn't type it perfectly
+        const provider = new BrowserProvider(walletProvider as Eip1193Provider);
+        setEthersProvider(provider);
+        console.log("Ethers BrowserProvider created successfully.");
+      } catch (error) {
+         console.error("Error creating BrowserProvider:", error);
+         setEthersProvider(null); // Reset on error
+      }
+    } else {
+      // Reset provider if wallet disconnects or isn't available
+      setEthersProvider(null);
+      console.log("Wallet provider not available.");
+    }
+    // Re-run this effect if the walletProvider changes (e.g., user connects/disconnects)
+  }, [walletProvider]);
+
+  const InfiRouter = new Contract(
+    infiRouterAddress, 
+    infiRouterAbi, 
+    ethersProvider
+)
+
+  async function query(tknFrom:string, tknTo:string, amountIn:any) {
+    const maxHops = 3
+    const gasPrice = ethers.parseUnits('225', 'gwei')
+    return InfiRouter.findBestPathWithGas(
+        amountIn, 
+        tknFrom, 
+        tknTo, 
+        maxHops,
+        gasPrice,
+        { gasLimit: 1e9 }
+    )
+}
+
   const handleSlippage = (e: any) => {
     setSlippage(e.target.value);
   };
 
-  const changeAmount = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setTokenOneAmount(e.target.value);
-    if (e.target.value && prices) {
-      setTokenTwoAmount((Number(e.target.value) * prices.ratio).toFixed(2));
-    } else {
-      setTokenTwoAmount('0');
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const currentInputStr = e.target.value;
+    setTokenOneAmount(currentInputStr); // Update input immediately
+
+    // Clear previous debounce timer
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
     }
+
+    // Basic validation before setting timeout
+    if (!currentInputStr || isNaN(parseFloat(currentInputStr)) || parseFloat(currentInputStr) <= 0) {
+      setTokenTwoAmount("0.00");
+      setIsQuerying(false); // Stop querying if input is invalid
+      return;
+    }
+
+    setIsQuerying(true); // Indicate loading/querying
+
+    // Set a new timer
+    debounceTimeoutRef.current = setTimeout(async () => {
+      try {
+        // Ensure provider is ready
+        if (!ethersProvider) {
+           console.error("Provider not ready for query");
+           setIsQuerying(false);
+           return;
+        }
+         // Ensure amount is valid BigInt parsable string
+         const amountInWei = ethers.parseUnits(currentInputStr, tokenOne.decimals);
+
+        console.log(`Debounced query for: ${currentInputStr}`); // Logging
+        const res = await query(tokenOne.address, tokenTwo.address, amountInWei); // Pass BigInt amount
+
+        if (res && res.amounts && res.amounts.length > 0) {
+          const estimatedOutputWei = res.amounts[res.amounts.length - 1];
+          const estimatedOutputFormatted = ethers.formatUnits(
+            estimatedOutputWei,
+            tokenTwo.decimals
+          );
+          // -- Simple Multiplication (See previous caveat about precision) --
+          // This part assumes the rate is somewhat constant for different inputs
+          // A better approach might involve BigInt division if you have the input Wei used for the query
+          // For display, simple ratio might be okay.
+          // Let's just display the direct query result for the debounced input for accuracy:
+           setTokenTwoAmount(parseFloat(estimatedOutputFormatted).toFixed(6)); // Show more precision
+           // setTokenTwoAmount(calculatedAmountNumber.toFixed(2)); // Previous calculation
+        } else {
+          setTokenTwoAmount("0.00"); // Handle no result
+        }
+      } catch (err: any) {
+         console.error("Error during debounced query:", err);
+         // Handle specific errors, e.g., invalid input format for parseUnits
+         if (err.code === 'INVALID_ARGUMENT'){
+            setTokenTwoAmount("Invalid input")
+         } else {
+            setTokenTwoAmount("Error");
+         }
+
+      } finally {
+         setIsQuerying(false); // Done querying
+      }
+    }, 500); // 500ms debounce delay
   };
 
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const switchTokens = () => {
-    setPrices(null);
     setTokenOneAmount('0');
     setTokenTwoAmount('0');
     setTokenOne(tokenTwo);
     setTokenTwo(tokenOne);
-    fetchDexSwap(tokenTwo.address, tokenOne.address);
   };
 
   const openModal = (token: number) => {
@@ -73,63 +211,151 @@ export default function Swap({ address, isConnected }: SwapProps) {
   };
 
   const modifyToken = (i: number) => {
-    setPrices(null);
     setTokenOneAmount('0');
     setTokenTwoAmount('0');
     if (changeToken === 1) {
       setTokenOne(tokenList[i]);
-      fetchDexSwap(tokenList[i].address, tokenTwo.address);
     } else {
       setTokenTwo(tokenList[i]);
-      fetchDexSwap(tokenOne.address, tokenList[i].address);
     }
     setIsOpen(false);
   };
 
-  const fetchDexSwap = async (one: string, two: string) => {
-    try {
-      const res = await axios.get("https://dex-swap-clone.onrender.com/tokenPrice", {
-        params: {
-          addressOne: one,
-          addressTwo: two
-        }
-      });
-      setPrices(res.data);
-    } catch (error) {
-      console.error('Error fetching token prices:', error);
-    }
-  };
 
   const fetchDex = async () => {
     try {
-      const allowance = await axios.get(
-        `https://api.1inch.io/v5.0/1/approve/allowance?tokenAddress=${tokenOne.address}&walletAddress=${address}`
-      );
-
-      if (allowance.data.allowance === 0) {
-        const approve = await axios.get(
-          `https://api.1inch.io/v5.0/1/approve/transaction?tokenAddress=${tokenOne.address}&amount=100000000000`
-        );
-        setTxDetails(approve.data);
+      // Ensure provider and signer are ready
+      if (!ethersProvider) {
+        messageApi.error('Wallet provider not available.');
         return;
       }
+      const signer = await ethersProvider.getSigner();
+      if (!signer) {
+        messageApi.error('Signer not available.');
+        return;
+      }
+      if (!tokenOneAmount || parseFloat(tokenOneAmount) <= 0) {
+         messageApi.error('Please enter a valid amount to swap.');
+         return;
+      }
 
-      const swap = await axios.get(
-        `https://api.1inch.io/v5.0/1/swap?fromTokenAddress=${tokenOne.address}&toTokenAddress=${tokenTwo.address}&amount=${tokenOneAmount.padEnd(tokenOne.decimals + tokenOneAmount.length, '0')}&fromAddress=${address}&slippage=${slippage}`
+
+      console.log("Fetching swap data for:", tokenOneAmount, tokenOne.ticker);
+
+       // 1. Parse amountIn to BigInt
+       const amountInWei = ethers.parseUnits(tokenOneAmount, tokenOne.decimals);
+
+      // 2. Query the router
+      const queryRes = await query(tokenOne.address, tokenTwo.address, amountInWei);
+      console.log("Query Result:", queryRes);
+
+      // Validate query response
+      if (!queryRes || !queryRes.amounts || queryRes.amounts.length === 0 || !queryRes.path || !queryRes.adapters) {
+         messageApi.error('Failed to get a valid swap route from the router.');
+         return;
+      }
+
+      // 3. Get amountOutMin (last amount from query) and fee
+      const amountOutMin = queryRes.amounts[queryRes.amounts.length - 1];
+      const fee = 0; // Assuming fee is always 0 based on previous examples
+
+      // 4. Check allowance
+      const tokenContract = new ethers.Contract(
+        tokenOne.address, 
+        [
+            "function approve(address spender, uint256 amount) public returns (bool)",
+            "function allowance(address owner, address spender) external view returns (uint256)"
+        ],
+        signer
+    )
+
+      const allowance = await tokenContract.allowance(address, infiRouterAddress);
+      console.log("Current allowance (Wei):", allowance.toString());
+
+      // 5. Approve if necessary (Compare BigInts correctly)
+      if (allowance < amountInWei) { // Use < for BigInt comparison
+        console.log(`Allowance is ${allowance.toString()}, need ${amountInWei.toString()}. Approving...`);
+        messageApi.info('Approval required. Please confirm in your wallet.');
+        try {
+            const approveTx = await tokenContract.approve(infiRouterAddress, amountInWei, { // Use amountInWei
+                 gasLimit: 100000, // Optional: Set a gas limit for approve
+                 // gasPrice: ethers.utils.parseUnits("1", 'gwei') // Optional: Set gas price
+            });
+            console.log("Approval tx sent:", approveTx.hash);
+            await approveTx.wait(); // Wait for approval confirmation
+            console.log("Approval confirmed.");
+            messageApi.success('Approval successful!');
+            // Potentially pause here or proceed directly to swap
+        } catch (approveError: any) {
+             console.error('Error during approval:', approveError);
+             messageApi.error(`Approval failed: ${approveError.reason || approveError.message}`);
+             return; // Stop if approval fails
+        }
+
+      } else {
+         console.log("Sufficient allowance already granted.");
+      }
+
+      // 6. Prepare arguments for swapNoSplit (Create COPIES of arrays)
+      const pathCopy = [...queryRes.path];
+      const adaptersCopy = [...queryRes.adapters];
+      const tradeArgs = [
+            amountInWei,      // amountIn (BigInt)
+            amountOutMin,     // amountOutMin (BigInt)
+            pathCopy,         // path (copied array)
+            adaptersCopy      // adapters (copied array)
+      ];
+
+      console.log("Executing swap with args:", tradeArgs);
+      messageApi.info('Executing swap. Please confirm in your wallet.');
+
+      // 7. Execute Swap
+      //@ts-ignore - Ignore potential type mismatch if InfiRouter isn't perfectly typed
+      const swapTx = await InfiRouter.connect(signer).swapNoSplit(
+        tradeArgs,
+        signer.address, // recipient
+        fee
+        // Optional: Add gas overrides if needed
+        // { gasLimit: 5000000, gasPrice: ethers.utils.parseUnits("1", 'gwei') }
       );
 
-      const decimals = Number(`1E${tokenTwo.decimals}`);
-      setTokenTwoAmount((Number(swap?.data?.toTokenAmount) / decimals).toFixed(2));
-      setTxDetails(swap?.data?.tx);
-    } catch (error) {
-      console.error('Error during swap:', error);
-      messageApi.error('Swap failed');
+      console.log("Swap tx sent:", swapTx.hash);
+      messageApi.loading({ content: 'Waiting for swap confirmation...', key: 'swapStatus' });
+
+      const receipt = await swapTx.wait();
+      console.log("Swap receipt:", receipt);
+
+      if (receipt.status === 1) {
+         messageApi.success({ content: 'Swap successful!', key: 'swapStatus', duration: 5 });
+          // --- Update output amount ---
+          // Option 1: Use the estimated amount from the query (less accurate after execution)
+          const estimatedOutputFormatted = ethers.formatUnits(amountOutMin, tokenTwo.decimals);
+          setTokenTwoAmount(parseFloat(estimatedOutputFormatted).toFixed(6));
+
+          // Option 2: Try to parse logs from the receipt (More Robust)
+          // This requires knowing the exact event emitted by the router/adapter upon swap completion
+          // e.g., const swapEvent = receipt.events?.find(e => e.event === 'Swap');
+          // if (swapEvent && swapEvent.args) {
+          //    const actualAmountOut = swapEvent.args.amountOut; // Adjust names based on actual event
+          //    setTokenTwoAmount(ethers.utils.formatUnits(actualAmountOut, tokenTwo.decimals).toFixed(6));
+          // }
+
+          // Clear input amount after successful swap?
+          // setTokenOneAmount('0');
+
+      } else {
+          messageApi.error({ content: 'Swap transaction failed (reverted).', key: 'swapStatus', duration: 5 });
+      }
+
+
+    } catch (error: any) {
+      console.error('Error during swap process:', error);
+      messageApi.error({ content: `Swap failed: ${error.reason || error.message || 'Unknown error'}`, key: 'swapStatus', duration: 5 });
+       // Reset loading message if swap fails before sending
+       messageApi.destroy('swapStatus');
     }
   };
 
-  useEffect(() => {
-    fetchDexSwap(tokenList[0].address, tokenList[1].address);
-  }, []);
 
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [transactionMode, setTransactionMode] = useState<string>('default');
@@ -271,8 +497,8 @@ export default function Swap({ address, isConnected }: SwapProps) {
           <Input
             placeholder="0"
             value={tokenOneAmount}
-            onChange={changeAmount}
-            disabled={!prices}
+            onChange={handleInputChange}
+            disabled={false}
             className="bg-transparent border border-gray-700 rounded-xl p-4"
           />
           <Input
