@@ -8,7 +8,8 @@ const infiRouterAbi = require('../../contract/aggregator/pharos/InfiRouter.json'
 import { ArrowDownOutlined, SettingOutlined } from '@ant-design/icons';
 import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { Token, TokenPrice, TxDetails } from '@/types/token';
+import { TokenInfo, DEFAULT_TOKEN_LIST } from '../../services/tokenService';
+import { TxDetails } from '@/types/token';
 import TokenSelectionModal from '@/components/TokenSelectionModal';
 import { useReadContract } from "wagmi";
 import { useAppKitAccount, useAppKitProvider } from '@reown/appkit/react';
@@ -19,56 +20,15 @@ interface SwapProps {
   isConnected: boolean;
 }
 
-const tokenList: Token[] = [
-  {
-    ticker: "RAMBO",
-    img: "/token.png",
-    name: "Rambo",
-    address: "0x04fe091c78100eb1Fb6d5b94277De88F76EE21d4",
-    decimals: 18
-  },
-  {
-    ticker: "BOBA",
-    img: "/token.png",
-    name: "Bobafet",
-    address: "0x39645603a6cD436e273bbd5e3AD001820e7be279",
-    decimals: 18
-  },
-  {
-    ticker: "DAWG",
-    img: "/token.png",
-    name: "Dawg",
-    address: "0xF526Abb89db0fFE7176db531417ff9108Ef3Ed99",
-    decimals: 18
-  },
-  {
-    ticker: "OCTO",
-    img: "/token.png",
-    name: "Octopus",
-    address: "0xAaCc2185ff895E95B9B17B0809f7Febd99394501",
-    decimals: 18
-  },
-  {
-    ticker: "TEAM",
-    img: "/token.png",
-    name: "Teammate",
-    address: "0xec5939822a1D9a9E0E089Fe9eBCb75A5F29D23d2",
-    decimals: 18
-  }
-];
-
-
-
 export default function Swap() {
   const [slippage, setSlippage] = useState<number>(2.5);
   const [messageApi, contextHolder] = message.useMessage();
   const [tokenOneAmount, setTokenOneAmount] = useState<string>('0');
   const [tokenTwoAmount, setTokenTwoAmount] = useState<string>('0');
-  const [tokenOne, setTokenOne] = useState<Token>(tokenList[0]);
-  const [tokenTwo, setTokenTwo] = useState<Token>(tokenList[1]);
+  const [tokenOne, setTokenOne] = useState<TokenInfo>(DEFAULT_TOKEN_LIST.tokens[0]);
+  const [tokenTwo, setTokenTwo] = useState<TokenInfo>(DEFAULT_TOKEN_LIST.tokens[1]);
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [changeToken, setChangeToken] = useState<number>(1);
-  // const [prices, setPrices] = useState<TokenPrice | null>(null);
   const [txDetails, setTxDetails] = useState<TxDetails>({
     to: null,
     data: null,
@@ -201,8 +161,9 @@ export default function Swap() {
   const switchTokens = () => {
     setTokenOneAmount('0');
     setTokenTwoAmount('0');
+    const tempToken = tokenOne;
     setTokenOne(tokenTwo);
-    setTokenTwo(tokenOne);
+    setTokenTwo(tempToken);
   };
 
   const openModal = (token: number) => {
@@ -210,13 +171,24 @@ export default function Swap() {
     setIsOpen(true);
   };
 
-  const modifyToken = (i: number) => {
+  const modifyToken = (token: TokenInfo) => {
     setTokenOneAmount('0');
     setTokenTwoAmount('0');
+
     if (changeToken === 1) {
-      setTokenOne(tokenList[i]);
+       if(token.address === tokenTwo.address) {
+         switchTokens();
+         setIsOpen(false);
+         return;
+       }
+      setTokenOne(token);
     } else {
-      setTokenTwo(tokenList[i]);
+       if(token.address === tokenOne.address) {
+          switchTokens();
+          setIsOpen(false);
+          return;
+       }
+      setTokenTwo(token);
     }
     setIsOpen(false);
   };
@@ -240,7 +212,7 @@ export default function Swap() {
       }
 
 
-      console.log("Fetching swap data for:", tokenOneAmount, tokenOne.ticker);
+      console.log("Fetching swap data for:", tokenOneAmount, tokenOne.symbol);
 
        // 1. Parse amountIn to BigInt
        const amountInWei = ethers.parseUnits(tokenOneAmount, tokenOne.decimals);
@@ -277,7 +249,9 @@ export default function Swap() {
         console.log(`Allowance is ${allowance.toString()}, need ${amountInWei.toString()}. Approving...`);
         messageApi.info('Approval required. Please confirm in your wallet.');
         try {
-            const approveTx = await tokenContract.approve(infiRouterAddress, amountInWei, { // Use amountInWei
+            // Use connect(signer) to get a Contract instance associated with the signer
+            // Cast to Contract to satisfy TS about the approve method
+            const approveTx = await (tokenContract.connect(signer) as ethers.Contract).approve(infiRouterAddress, amountInWei, { // Use amountInWei
                  gasLimit: 100000, // Optional: Set a gas limit for approve
                  // gasPrice: ethers.utils.parseUnits("1", 'gwei') // Optional: Set gas price
             });
@@ -310,8 +284,9 @@ export default function Swap() {
       messageApi.info('Executing swap. Please confirm in your wallet.');
 
       // 7. Execute Swap
-      //@ts-ignore - Ignore potential type mismatch if InfiRouter isn't perfectly typed
-      const swapTx = await InfiRouter.connect(signer).swapNoSplit(
+      // Use connect(signer) to get a Contract instance associated with the signer
+      // Cast to Contract to satisfy TS about the swapNoSplit method
+      const swapTx = await (InfiRouter.connect(signer) as ethers.Contract).swapNoSplit(
         tradeArgs,
         signer.address, // recipient
         fee
@@ -469,7 +444,6 @@ export default function Swap() {
         isOpen={isOpen}
         onClose={() => setIsOpen(false)}
         onSelect={modifyToken}
-        tokens={tokenList}
       />
 
       <div className="w-full max-w-md bg-[#0E111B] border-2 border-[#21273a] rounded-2xl p-6 space-y-4">
@@ -519,16 +493,16 @@ export default function Swap() {
             className=" assetOne"
             onClick={() => openModal(1)}
           >
-            <img src={tokenOne.img} alt={tokenOne.ticker} className="logo" />
-            <span>{tokenOne.ticker}</span>
+            <img src={tokenOne.logoURI} alt={tokenOne.symbol} className="logo" />
+            <span>{tokenOne.symbol}</span>
           </button>
 
           <button
             className="assetTwo"
             onClick={() => openModal(2)}
           >
-            <img src={tokenTwo.img} alt={tokenTwo.ticker} className="logo" />
-            <span>{tokenTwo.ticker}</span>
+            <img src={tokenTwo.logoURI} alt={tokenTwo.symbol} className="logo" />
+            <span>{tokenTwo.symbol}</span>
           </button>
         </div>
 

@@ -1,95 +1,375 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { Input, message } from 'antd';
 // import { Button } from "../ui/button";
 // import TokenDisplay from "../tokens/TokenDisplay";
 import suiIcon from "../../assets/sui.png";
-import Logo from "../../public/vercel.svg";
+// import Logo from "../../public/vercel.svg";
 import TokenSelectionModal from '@/components/TokenSelectionModal';
-import { Token } from '@/types/token';
+import { TokenInfo, DEFAULT_TOKEN_LIST } from '@/services/tokenService';
 import { ChevronDownIcon } from "lucide-react";
+import { ethers } from "ethers";
+import { useAppKitAccount, useAppKitProvider } from '@reown/appkit/react'; 
+import { BrowserProvider, Contract, Eip1193Provider } from "ethers";
+import { ADDRESSES } from '@/constants/addresses';
+import { 
+    encodeSqrtPriceX96, 
+    priceToTick, 
+    sortTokens, 
+    POOL_ABI, 
+    ERC20_ABI, 
+    POSITION_MANAGER_ABI, 
+    FACTORY_ABI // Import FACTORY_ABI for getPool call
+} from '@/utils/contracts'; 
 
-const tokenList: Token[] = [
-  {
-    ticker: "ETH",
-    img: "/vercel.svg",
-    name: "Ethereum",
-    address: "0x1234...",
-    decimals: 18
-  },
-  {
-    ticker: "SUI",
-    img: "/vercel.svg",
-    name: "SUI Token",
-    address: "0x5678...",
-    decimals: 18
-  }
-];
+// Define Tick constants - Ensure these are defined
+const MIN_TICK = -887272;
+const MAX_TICK = 887272;
+
+// REMOVE local tokenList
+// const tokenList: TokenInfo[] = [ ... ];
 
 const CreatePool = () => {
   const [currentStep, setCurrentStep] = useState(1);
-  const [selectedBaseToken, setSelectedBaseToken] = useState("ETH");
-  const [selectedQuoteToken, setSelectedQuoteToken] = useState("SUI");
-  const [selectedFeeTier, setSelectedFeeTier] = useState("");
-  const [initialPrice, setInitialPrice] = useState("12.0000000000000000048");
+  // Initialize state to null
+  const [selectedBaseToken, setSelectedBaseToken] = useState<TokenInfo | null>(null); 
+  const [selectedQuoteToken, setSelectedQuoteToken] = useState<TokenInfo | null>(null);
+  const [selectedFeeTier, setSelectedFeeTier] = useState<string>("");
+  const [initialPrice, setInitialPrice] = useState<string>("");
   const [rangeType, setRangeType] = useState("full");
-  const [minPrice, setMinPrice] = useState("11.883798");
-  const [maxPrice, setMaxPrice] = useState("12.123855");
+  const [minPrice, setMinPrice] = useState<string>("");
+  const [maxPrice, setMaxPrice] = useState<string>("");
+  const [baseAmount, setBaseAmount] = useState<string>("");
+  const [quoteAmount, setQuoteAmount] = useState<string>("");
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [changeToken, setChangeToken] = useState<number>(1);
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [poolExistsStatus, setPoolExistsStatus] = useState<'idle' | 'checking' | 'exists' | 'not_found'>('idle');
 
-  const handleContinue = () => {
-    if (currentStep === 1) {
-      setCurrentStep(2);
-    } else if (currentStep === 2) {
-      setCurrentStep(3);
+  const [messageApi, contextHolder] = message.useMessage();
+  const { address, isConnected } = useAppKitAccount();
+  const { walletProvider } = useAppKitProvider("eip155");
+  const [ethersProvider, setEthersProvider] = useState<BrowserProvider | null>(null);
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    if (walletProvider) {
+      try {
+        const provider = new BrowserProvider(walletProvider as Eip1193Provider);
+        setEthersProvider(provider);
+        console.log("[CreatePool] Ethers BrowserProvider created.");
+      } catch (error) {
+         console.error("[CreatePool] Error creating BrowserProvider:", error);
+         setEthersProvider(null); 
+      }
+    } else {
+      setEthersProvider(null);
+    }
+  }, [walletProvider]);
+
+  const checkPoolExists = useCallback(async () => {
+      if (!ethersProvider || !selectedBaseToken || !selectedQuoteToken || !selectedFeeTier) {
+          setPoolExistsStatus('idle');
+          return;
+      }
+
+      console.log("Queueing pool existence check...");
+      setPoolExistsStatus('checking');
+      if (debounceTimeoutRef.current) {
+           clearTimeout(debounceTimeoutRef.current);
+      }
+
+      debounceTimeoutRef.current = setTimeout(async () => {
+          console.log("Executing debounced pool existence check...");
+          try {
+              const [token0Address, token1Address] = sortTokens(selectedBaseToken.address, selectedQuoteToken.address);
+              const feeTierNumber = parseInt(selectedFeeTier, 10);
+              if (isNaN(feeTierNumber)) { throw new Error("Invalid fee tier"); }
+
+              const factory = new ethers.Contract(ADDRESSES.factory, FACTORY_ABI, ethersProvider);
+              const existingPoolAddress = await factory.getPool(token0Address, token1Address, feeTierNumber);
+
+              if (existingPoolAddress && existingPoolAddress !== ethers.ZeroAddress) {
+                  console.log("Pool exists at:", existingPoolAddress);
+                  setPoolExistsStatus('exists');
+              } else {
+                  console.log("Pool does not exist.");
+                  setPoolExistsStatus('not_found');
+              }
+          } catch (error) {
+              console.error("Error checking pool existence:", error);
+              setPoolExistsStatus('idle'); 
+              messageApi.error("Could not check if pool exists.");
+          }
+      }, 750);
+  }, [ethersProvider, selectedBaseToken, selectedQuoteToken, selectedFeeTier, messageApi]);
+
+  useEffect(() => {
+      checkPoolExists();
+       return () => {
+        if (debounceTimeoutRef.current) {
+            clearTimeout(debounceTimeoutRef.current);
+        }
+      };
+  }, [checkPoolExists]);
+
+  const handleContinue = async () => {
+    if (!isConnected || !ethersProvider) {
+        messageApi.error("Please connect your wallet.");
+        return;
+    }
+
+    setIsProcessing(true);
+    messageApi.loading({ content: 'Processing...', key: 'stepProcessing' });
+
+    try {
+      if (currentStep === 1) {
+          if (!selectedBaseToken || !selectedQuoteToken || !selectedFeeTier) {
+              throw new Error('Please select both tokens and a fee tier.');
+          }
+          if (poolExistsStatus !== 'not_found') {
+               if (poolExistsStatus === 'exists') throw new Error('Pool already exists. Use Add Liquidity page.');
+               else if (poolExistsStatus === 'checking') throw new Error('Still checking pool existence...');
+               else throw new Error('Could not determine pool status.');
+          }
+          setCurrentStep(2);
+          messageApi.success({ content: 'Pair selected.', key: 'stepProcessing', duration: 2 });
+          setIsProcessing(false);
+
+      } else if (currentStep === 2) {
+          if (!initialPrice || parseFloat(initialPrice) <= 0) {
+              throw new Error('Please set a valid initial price.');
+          }
+          if (rangeType === 'custom' && (!minPrice || !maxPrice || parseFloat(minPrice) < 0 || parseFloat(maxPrice) <= parseFloat(minPrice))) throw new Error('Invalid custom price range.');
+          console.log("Proceeding to create/initialize pool...");
+          await handleCreateAndAddLiquidity();
+
+      } else if (currentStep === 3) {
+           if (!baseAmount || !quoteAmount || parseFloat(baseAmount) <= 0 || parseFloat(quoteAmount) <= 0) {
+              throw new Error('Please enter valid deposit amounts for both tokens.');
+          }
+          console.log("Proceeding to add liquidity...");
+          await handleCreateAndAddLiquidity();
+      }
+    } catch (error: any) {
+        console.error("Error during step transition:", error);
+        messageApi.error({ content: `Error: ${error.message || 'An unexpected error occurred.'}`, key: 'stepProcessing', duration: 5 });
+        setIsProcessing(false);
     }
   };
 
-  const openModal = (token: number) => {
-    setChangeToken(token);
-    setIsOpen(true);
+  const handleCreateAndAddLiquidity = async () => {
+      if (!ethersProvider || !address || !selectedBaseToken || !selectedQuoteToken || !selectedFeeTier || !initialPrice || !baseAmount || !quoteAmount) {
+          messageApi.error("Internal Error: Missing required information.");
+          return;
+      }
+      
+      setIsProcessing(true);
+      const actionKey = 'createAndAdd';
+      messageApi.loading({ content: 'Starting process...', key: actionKey });
+
+      let txSuccess = false;
+      try {
+          const signer = await ethersProvider.getSigner();
+          const positionManager = new ethers.Contract(ADDRESSES.positionManager, POSITION_MANAGER_ABI, signer);
+          const baseTokenContract = new ethers.Contract(selectedBaseToken.address, ERC20_ABI, signer);
+          const quoteTokenContract = new ethers.Contract(selectedQuoteToken.address, ERC20_ABI, signer);
+
+          messageApi.loading({ content: 'Creating pool contract...', key: actionKey });
+          const [token0Address, token1Address] = sortTokens(selectedBaseToken.address, selectedQuoteToken.address);
+          const feeTierNumber = parseInt(selectedFeeTier, 10);
+          let priceNumber = parseFloat(initialPrice);
+          if (selectedBaseToken.address.toLowerCase() !== token0Address.toLowerCase()) priceNumber = 1 / priceNumber;
+          const sqrtPriceX96 = encodeSqrtPriceX96(priceNumber);
+
+          console.log(`Creating pool: T0=${token0Address}, T1=${token1Address}, Fee=${feeTierNumber}, SqrtPrice=${sqrtPriceX96}`);
+          const createTx = await positionManager.createAndInitializePoolIfNecessary(
+              token0Address, token1Address, feeTierNumber, sqrtPriceX96, { gasLimit: 5000000 }
+          );
+          messageApi.loading({ content: 'Waiting for pool creation...', key: actionKey });
+          const createReceipt = await createTx.wait();
+          if (createReceipt.status !== 1) throw new Error("Pool creation transaction failed.");
+          messageApi.success({ content: 'Pool created!', key: actionKey, duration: 2 });
+
+          messageApi.loading({ content: 'Preparing liquidity addition...', key: actionKey });
+
+          const factory = new ethers.Contract(ADDRESSES.factory, FACTORY_ABI, ethersProvider);
+          const actualPoolAddress = await factory.getPool(token0Address, token1Address, feeTierNumber);
+          if (!actualPoolAddress || actualPoolAddress === ethers.ZeroAddress) throw new Error("Pool address not found after creation.");
+          console.log("Confirmed Pool Address:", actualPoolAddress);
+          const poolContract = new ethers.Contract(actualPoolAddress, POOL_ABI, ethersProvider);
+
+          let tickSpacing = 1;
+          try {
+              const spacingResult = await poolContract.tickSpacing();
+              tickSpacing = Number(spacingResult); 
+              console.log(`Pool Tick Spacing: ${tickSpacing}`);
+          } catch { console.warn("Couldn't fetch tick spacing."); }
+
+          let tickLower: number, tickUpper: number;
+          if (rangeType === 'full') {
+              tickLower = Math.ceil(MIN_TICK / tickSpacing) * tickSpacing; 
+              tickUpper = Math.floor(MAX_TICK / tickSpacing) * tickSpacing;
+          } else {
+              let minP = parseFloat(minPrice); let maxP = parseFloat(maxPrice);
+              if (selectedBaseToken.address.toLowerCase() !== token0Address.toLowerCase()) { 
+                  const invMin = 1 / maxP; const invMax = 1 / minP;
+                  minP = invMin; maxP = invMax;
+              }
+              tickLower = priceToTick(minP); tickUpper = priceToTick(maxP);
+              tickLower = Math.ceil(tickLower / tickSpacing) * tickSpacing;
+              tickUpper = Math.floor(tickUpper / tickSpacing) * tickSpacing;
+          }
+          tickLower = Math.max(MIN_TICK, tickLower);
+          tickUpper = Math.min(MAX_TICK, tickUpper);
+          console.log(`Ticks: L=${tickLower}, U=${tickUpper}, Spacing=${tickSpacing}`);
+
+          const baseAmt = ethers.parseUnits(baseAmount, selectedBaseToken.decimals);
+          const quoteAmt = ethers.parseUnits(quoteAmount, selectedQuoteToken.decimals);
+          const amount0 = selectedBaseToken.address.toLowerCase() === token0Address.toLowerCase() ? baseAmt : quoteAmt;
+          const amount1 = selectedBaseToken.address.toLowerCase() === token0Address.toLowerCase() ? quoteAmt : baseAmt;
+
+          messageApi.loading({ content: 'Checking approvals...', key: actionKey });
+          const contract0 = selectedBaseToken.address.toLowerCase() === token0Address.toLowerCase() ? baseTokenContract : quoteTokenContract;
+          const contract1 = selectedBaseToken.address.toLowerCase() === token0Address.toLowerCase() ? quoteTokenContract : baseTokenContract;
+          const symbol0 = selectedBaseToken.address.toLowerCase() === token0Address.toLowerCase() ? selectedBaseToken.symbol : selectedQuoteToken.symbol;
+          const symbol1 = selectedBaseToken.address.toLowerCase() === token0Address.toLowerCase() ? selectedQuoteToken.symbol : selectedBaseToken.symbol;
+          
+          const approveIfNeeded = async (contract: Contract, amt: bigint, sym: string) => {
+              if (amt > BigInt(0)) {
+                 const allowance = await contract.allowance(address, ADDRESSES.positionManager);
+                 if (allowance < amt) {
+                    messageApi.loading({ content: `Approving ${sym}...`, key: actionKey });
+                    const approveTx = await contract.approve(ADDRESSES.positionManager, amt);
+                    await approveTx.wait();
+                    messageApi.success({content: `${sym} approved!`, key: actionKey, duration: 2});
+                 }
+              }
+          };
+          await approveIfNeeded(contract0, amount0, symbol0);
+          await approveIfNeeded(contract1, amount1, symbol1);
+          
+          const deadline = Math.floor(Date.now() / 1000) + 60 * 10;
+          const mintParams = {
+              token0: token0Address, token1: token1Address, fee: feeTierNumber,
+              tickLower, tickUpper, amount0Desired: amount0, amount1Desired: amount1, 
+              amount0Min: BigInt(0), amount1Min: BigInt(0),
+              recipient: address, deadline,
+          };
+          messageApi.loading({ content: 'Adding liquidity...', key: actionKey });
+          const mintTx = await positionManager.mint(mintParams);
+          messageApi.loading({ content: 'Waiting for confirmation...', key: actionKey });
+          const mintReceipt = await mintTx.wait();
+          if (mintReceipt.status !== 1) throw new Error("Add liquidity transaction failed.");
+          
+          txSuccess = true;
+          messageApi.success({ content: 'Pool created & liquidity added! 🎉', key: actionKey, duration: 5 });
+          
+      } catch (error: any) {
+          console.error("Create/Add Liq Error:", error);
+          messageApi.error({ content: `Failed: ${error.reason || error.message || 'Unknown error'}`, key: actionKey, duration: 5 });
+      } finally {
+          if (!txSuccess) messageApi.destroy(actionKey);
+          setIsProcessing(false);
+      }
   };
 
-  const handleBaseTokenSelect = (token: string) => {
-    setSelectedBaseToken(token);
+  const handleBaseAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const inputAmount = e.target.value;
+      setBaseAmount(inputAmount);
+      if (!initialPrice || !selectedBaseToken || !selectedQuoteToken || !inputAmount) {
+          setQuoteAmount(""); return;
+      }
+      try {
+          const baseNum = parseFloat(inputAmount);
+          const priceNum = parseFloat(initialPrice);
+          if (!isNaN(baseNum) && baseNum > 0 && !isNaN(priceNum) && priceNum > 0) {
+              const calculatedQuote = baseNum * priceNum;
+              setQuoteAmount(calculatedQuote.toFixed(selectedQuoteToken.decimals > 8 ? 8 : selectedQuoteToken.decimals)); 
+          } else {
+              setQuoteAmount("");
+          }
+      } catch { setQuoteAmount(""); }
   };
 
-  const modifyToken = (i: number) => {
-    if (changeToken === 1) {
-      setSelectedBaseToken(tokenList[i].ticker);
+  const handleQuoteAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const inputAmount = e.target.value;
+      setQuoteAmount(inputAmount);
+      if (!initialPrice || !selectedBaseToken || !selectedQuoteToken || !inputAmount) {
+          setBaseAmount(""); return;
+      }
+      try {
+          const quoteNum = parseFloat(inputAmount);
+          const priceNum = parseFloat(initialPrice);
+          if (!isNaN(quoteNum) && quoteNum > 0 && !isNaN(priceNum) && priceNum > 0) {
+              const calculatedBase = quoteNum / priceNum;
+              setBaseAmount(calculatedBase.toFixed(selectedBaseToken.decimals > 8 ? 8 : selectedBaseToken.decimals)); 
+          } else {
+              setBaseAmount("");
+          }
+      } catch { setBaseAmount(""); }
+  };
+
+  const openModal = (tokenIndex: number) => {
+      setChangeToken(tokenIndex);
+      setIsOpen(true);
+  };
+
+  const modifyToken = (token: TokenInfo) => {
+    const selectedAddress = token.address;
+    const otherTokenAddress = changeToken === 1 ? selectedQuoteToken?.address : selectedBaseToken?.address;
+    if (selectedAddress === otherTokenAddress) {
+      const tempBase = selectedBaseToken;
+      const tempQuote = selectedQuoteToken;
+      setSelectedBaseToken(tempQuote);
+      setSelectedQuoteToken(tempBase);
     } else {
-      setSelectedQuoteToken(tokenList[i].ticker);
+      if (changeToken === 1) {
+        setSelectedBaseToken(token);
+      } else {
+        setSelectedQuoteToken(token);
+      }
     }
     setIsOpen(false);
+    setBaseAmount("");
+    setQuoteAmount("");
+    setInitialPrice(""); 
+    setMinPrice("");
+    setMaxPrice("");
+    setPoolExistsStatus('idle');
   };
+
+  const baseTokenForDisplay = selectedBaseToken;
+  const quoteTokenForDisplay = selectedQuoteToken;
 
   return (
     <div className="flex w-full max-w-6xl mx-auto p-4 gap-8 mt-12">
-      {/* Left side - Steps */}
+      {contextHolder}
+      
       <div className="w-1/4 bg-[#1f2639] rounded-lg p-4 h-fit border border-[#21273a]">
         <div className="space-y-6">
           <div className={`flex items-start space-x-4 ${currentStep === 1 ? '' : 'opacity-50'}`}>
             <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-medium">1</div>
             <div>
-              <h3 className="font-medium text-white">Select token & fee tier</h3>
-              <p className="text-sm text-gray-400">Select token you want to create a liquidity pool for.</p>
+              <h3 className="font-medium text-white">Select Pair & Fee</h3>
+              <p className="text-sm text-gray-400">Choose tokens and fee tier.</p>
             </div>
           </div>
 
-          <div className={`flex items-start space-x-4 ${currentStep === 2 ? '' : 'opacity-50'}`}>
+          <div className={`flex items-start space-x-4 ${currentStep >= 2 ? '' : 'opacity-50'}`}>
             <div className={`flex-shrink-0 w-8 h-8 rounded-full ${currentStep >= 2 ? 'bg-blue-500' : 'bg-[#2c3552]'} flex items-center justify-center text-white font-medium`}>2</div>
             <div>
-              <h3 className="font-medium text-white">Set initial price & range</h3>
-              <p className="text-sm text-gray-400">Set your initial price and range for the pool.</p>
+              <h3 className="font-medium text-white">Set Price & Range</h3>
+              <p className="text-sm text-gray-400">Set initial price and liquidity range.</p>
             </div>
           </div>
 
           <div className={`flex items-start space-x-4 ${currentStep === 3 ? '' : 'opacity-50'}`}>
             <div className={`flex-shrink-0 w-8 h-8 rounded-full ${currentStep === 3 ? 'bg-blue-500' : 'bg-[#2c3552]'} flex items-center justify-center text-white font-medium`}>3</div>
             <div>
-              <h3 className="font-medium text-white">Enter deposit amounts</h3>
-              <p className="text-sm text-gray-400">Enter the amounts you want to deposit.</p>
+              <h3 className="font-medium text-white">Deposit Amounts</h3>
+              <p className="text-sm text-gray-400">Enter deposit amounts.</p>
             </div>
           </div>
         </div>
@@ -116,7 +396,6 @@ const CreatePool = () => {
         )}
       </div>
 
-      {/* Right side - Content */}
       <div className="flex-1 bg-[#1f2639] rounded-lg p-6 border border-[#21273a]">
         {currentStep === 1 && (
           <div className="space-y-6">
@@ -129,24 +408,21 @@ const CreatePool = () => {
                 <div className="bg-[#2c3552] rounded-lg p-3 cursor-pointer hover:bg-[#374264] transition-colors" onClick={() => openModal(1)}>
                   <div className="flex items-center justify-between text-gray-400">
                     {selectedBaseToken ? (
+                      <div className="flex items-center gap-2">
+                        <img 
+                          src={selectedBaseToken.logoURI || "/vercel.svg"}
+                          alt={selectedBaseToken.symbol}
+                          className="w-6 h-6 rounded-full" 
+                        />
+                        <span className="text-white">{selectedBaseToken.symbol}</span>
+                      </div>
+                    ) : (
                       <>
                         <span>Select token</span>
                         <ChevronDownIcon className="w-5 h-5" />
                       </>
-
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <img src={"/vercel.svg"} alt={selectedBaseToken} className="w-6 h-6 rounded-full" />
-                        <span className="text-white">{selectedBaseToken}</span>
-                      </div>
                     )}
                   </div>
-                  <TokenSelectionModal
-                    isOpen={isOpen}
-                    onClose={() => setIsOpen(false)}
-                    onSelect={modifyToken}
-                    tokens={tokenList}
-                  />
                 </div>
               </div>
 
@@ -155,24 +431,21 @@ const CreatePool = () => {
                 <div className="bg-[#2c3552] rounded-lg p-3 cursor-pointer hover:bg-[#374264] transition-colors" onClick={() => openModal(2)}>
                   <div className="flex items-center justify-between text-gray-400">
                     {selectedQuoteToken ? (
+                      <div className="flex items-center gap-2">
+                        <img 
+                          src={selectedQuoteToken.logoURI || "/vercel.svg"} 
+                          alt={selectedQuoteToken.symbol}
+                          className="w-6 h-6 rounded-full" 
+                        />
+                        <span className="text-white">{selectedQuoteToken.symbol}</span>
+                      </div>
+                    ) : (
                       <>
                         <span>Select token</span>
                         <ChevronDownIcon className="w-5 h-5" />
                       </>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <img src={"/vercel.svg"} alt={selectedQuoteToken} className="w-6 h-6 rounded-full" />
-                        <span className="text-white">{selectedQuoteToken}</span>
-                      </div>
-
                     )}
                   </div>
-                  <TokenSelectionModal
-                    isOpen={isOpen}
-                    onClose={() => setIsOpen(false)}
-                    onSelect={modifyToken}
-                    tokens={tokenList}
-                  />
                 </div>
               </div>
 
@@ -184,39 +457,29 @@ const CreatePool = () => {
                     className="w-full bg-[#2c3552] text-white rounded-lg p-3 appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 hover:bg-[#374264] transition-colors"
                     value={selectedFeeTier}
                     onChange={(e) => setSelectedFeeTier(e.target.value)}
+                    disabled={isProcessing}
                   >
                     <option value="" disabled>Select fee tier</option>
-                    <option value="0.01">0.01% - Best for stable pairs</option>
-                    <option value="0.05">0.05% - Best for stable pairs</option>
-                    <option value="0.3">0.3% - Best for most pairs</option>
-                    <option value="1">1% - Best for exotic pairs</option>
+                    <option value="100">0.01%</option>
+                    <option value="500">0.05%</option>
+                    <option value="3000">0.30%</option>
+                    <option value="10000">1.00%</option>
                   </select>
                 </div>
               </div>
+            </div>
+
+            <div className="mt-4 h-6 text-sm">
+                {poolExistsStatus === 'checking' && <span className="text-yellow-400">Checking if pool exists...</span>}
+                {poolExistsStatus === 'exists' && <span className="text-red-400">Pool already exists! Go to 'Add Liquidity'.</span>}
+                {poolExistsStatus === 'not_found' && <span className="text-green-400">Pool doesn't exist. Ready to create.</span>}
             </div>
           </div>
         )}
         {currentStep === 2 && (
           <div className="space-y-6">
-            <h2 className="text-xl font-medium text-white">Set initial Price</h2>
+            <h2 className="text-xl font-medium text-white">Set Initial Price</h2>
             <p className="text-gray-400">Please set an initial price for this new pool to start.</p>
-
-            <div className="flex items-center justify-end gap-2">
-              <button
-                className={`flex items-center gap-2 rounded-lg px-3 py-1 cursor-pointer ${selectedBaseToken === 'ETH' ? 'bg-blue-500 text-white' : 'bg-[#2c3552] text-gray-400'} hover:bg-[#374264] transition-colors`}
-                onClick={() => handleBaseTokenSelect('ETH')}
-              >
-                <img src={"/vercel.svg"} alt={selectedBaseToken} className="w-5 h-5" />
-                <span>{selectedBaseToken}</span>
-              </button>
-              <button
-                className={`flex items-center gap-2 rounded-lg px-3 py-1 cursor-pointer ${selectedBaseToken === 'SUI' ? 'bg-blue-500 text-white' : 'bg-[#2c3552] text-gray-400'} hover:bg-[#374264] transition-colors`}
-                onClick={() => handleBaseTokenSelect('SUI')}
-              >
-                <img src={"/vercel.svg"} alt={selectedQuoteToken} className="w-5 h-5" />
-                <span>{selectedQuoteToken}</span>
-              </button>
-            </div>
 
             <div className="space-y-2">
               <input
@@ -226,7 +489,7 @@ const CreatePool = () => {
                 className="w-full bg-[#2c3552] text-white rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-blue-500 hover:bg-[#374264] transition-colors"
               />
               <div className="text-right text-gray-400">
-                Current Price: 1 {selectedBaseToken} = {initialPrice} {selectedQuoteToken}
+                Current Price: 1 {selectedBaseToken?.symbol || 'BASE'} = {initialPrice} {selectedQuoteToken?.symbol || 'QUOTE'}
               </div>
             </div>
 
@@ -264,14 +527,14 @@ const CreatePool = () => {
                     type="text"
                     value={minPrice}
                     onChange={(e) => setMinPrice(e.target.value)}
-                    disabled={rangeType === 'full'}
+                    disabled={rangeType === 'full' || isProcessing}
                     className="w-full bg-[#2c3552] text-white rounded-lg p-3 pl-8 pr-8 focus:outline-none focus:ring-2 focus:ring-blue-500 text-center disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#374264] transition-colors"
                   />
                   <button
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
                     disabled={rangeType === 'full'}
                   >+</button>
-                  <div className="text-xs text-gray-400 text-center mt-1">{selectedQuoteToken || 'SUI'} per {selectedBaseToken || 'ETH'}</div>
+                  <div className="text-xs text-gray-400 text-center mt-1">{selectedQuoteToken?.symbol || 'QUOTE'} per {selectedBaseToken?.symbol || 'BASE'}</div>
                 </div>
               </div>
               <div>
@@ -285,14 +548,14 @@ const CreatePool = () => {
                     type="text"
                     value={maxPrice}
                     onChange={(e) => setMaxPrice(e.target.value)}
-                    disabled={rangeType === 'full'}
+                    disabled={rangeType === 'full' || isProcessing}
                     className="w-full bg-[#2c3552] text-white rounded-lg p-3 pl-8 pr-8 focus:outline-none focus:ring-2 focus:ring-blue-500 text-center disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#374264] transition-colors"
                   />
                   <button
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
                     disabled={rangeType === 'full'}
                   >+</button>
-                  <div className="text-xs text-gray-400 text-center mt-1">{selectedQuoteToken || 'SUI'} per {selectedBaseToken || 'ETH'}</div>
+                  <div className="text-xs text-gray-400 text-center mt-1">{selectedQuoteToken?.symbol || 'QUOTE'} per {selectedBaseToken?.symbol || 'BASE'}</div>
                 </div>
               </div>
             </div>
@@ -308,15 +571,18 @@ const CreatePool = () => {
                 <div className="bg-[#2c3552] rounded-lg p-3 hover:bg-[#374264] transition-colors">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2">
-                      <img src={"/vercel.svg"} alt="ETH" className="w-6 h-6 rounded-full" />
+                      <img src={selectedBaseToken?.logoURI || "/vercel.svg"} alt={selectedBaseToken?.symbol || "Base"} className="w-6 h-6 rounded-full" />
                       <div className="flex flex-col">
-                        <span className="font-medium text-white">{selectedBaseToken}</span>
+                        <span className="font-medium text-white">{selectedBaseToken?.symbol || 'Select Token'}</span>
                       </div>
                     </div>
                     <input
                       type="text"
                       placeholder="0.0"
                       className="bg-transparent text-right outline-none w-1/2 text-white placeholder-gray-400"
+                      value={baseAmount}
+                      onChange={handleBaseAmountChange}
+                      disabled={isProcessing}
                     />
                   </div>
                 </div>
@@ -326,15 +592,18 @@ const CreatePool = () => {
                 <div className="bg-[#2c3552] rounded-lg p-3 hover:bg-[#374264] transition-colors">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2">
-                      <img src={"/vercel.svg"} alt="SUI" className="w-6 h-6 rounded-full" />
+                      <img src={selectedQuoteToken?.logoURI || "/vercel.svg"} alt={selectedQuoteToken?.symbol || "Quote"} className="w-6 h-6 rounded-full" />
                       <div className="flex flex-col">
-                        <span className="font-medium text-white">{selectedQuoteToken}</span>
+                        <span className="font-medium text-white">{selectedQuoteToken?.symbol || 'Select Token'}</span>
                       </div>
                     </div>
                     <input
                       type="text"
                       placeholder="0.0"
                       className="bg-transparent text-right outline-none w-1/2 text-white placeholder-gray-400"
+                      value={quoteAmount}
+                      onChange={handleQuoteAmountChange}
+                      disabled={isProcessing}
                     />
                   </div>
                 </div>
@@ -349,12 +618,12 @@ const CreatePool = () => {
                 <div className="text-sm text-gray-400 mb-2">Deposit Ratio</div>
                 <div className="flex items-center space-x-2 text-white">
                   <div className="flex items-center">
-                    <img src={"/vercel.svg"} alt="ETH" className="w-4 h-4 rounded-full mr-1" />
-                    <span>{selectedBaseToken} 50%</span>
+                    <img src={selectedBaseToken?.logoURI || "/vercel.svg"} alt={selectedBaseToken?.symbol || "Base"} className="w-4 h-4 rounded-full mr-1" />
+                    <span>{selectedBaseToken?.symbol || 'BASE'} 50%</span>
                   </div>
                   <div className="flex items-center">
-                    <img src={"/vercel.svg"} alt="SUI" className="w-4 h-4 rounded-full mr-1" />
-                    <span>{selectedQuoteToken} 50%</span>
+                    <img src={selectedQuoteToken?.logoURI || "/vercel.svg"} alt={selectedQuoteToken?.symbol || "Quote"} className="w-4 h-4 rounded-full mr-1" />
+                    <span>{selectedQuoteToken?.symbol || 'QUOTE'} 50%</span>
                   </div>
                 </div>
               </div>
@@ -364,13 +633,20 @@ const CreatePool = () => {
 
         <div className="mt-8">
           <button
-            className="w-full bg-blue-900 text-blue-500 py-3 rounded-xl font-medium hover:bg-blue-800 transition-colors"
+            className={`w-full bg-blue-900 text-blue-500 py-3 rounded-xl font-medium hover:bg-blue-800 transition-colors ${isProcessing || !isConnected || (currentStep === 1 && poolExistsStatus !== 'not_found') ? 'opacity-50 cursor-not-allowed' : ''}`}
             onClick={handleContinue}
+            disabled={isProcessing || !isConnected || (currentStep === 1 && poolExistsStatus !== 'not_found')}
           >
-            Continue
+            {isProcessing ? 'Processing...' : (currentStep === 3 ? 'Create Pool & Add Liquidity' : 'Continue')}
           </button>
         </div>
       </div>
+
+      <TokenSelectionModal
+        isOpen={isOpen}
+        onClose={() => setIsOpen(false)}
+        onSelect={modifyToken}
+      />
     </div>
   );
 };

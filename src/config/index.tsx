@@ -17,7 +17,8 @@ export const customNetwork = defineChain({
   rpcUrls: {
     default: {
       http: ['https://devnet.dplabs-internal.com'],
-      webSocket: ['wss://devnet.dplabs-internal.com'],
+      // Temporarily comment out WebSocket to test if it causes the transport issue
+      // webSocket: ['wss://devnet.dplabs-internal.com'], 
     },
   },
   blockExplorers: {

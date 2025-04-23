@@ -1,7 +1,7 @@
 "use client";
 import Image from 'next/image'
 import Link from 'next/link'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 //@ts-ignore
 import { ChevronDownIcon } from '@heroicons/react/24/solid'
@@ -23,6 +23,12 @@ export function Navbar() {
   const { disconnect } = useDisconnect();
 
   const [isEarnOpen, setIsEarnOpen] = useState(false);
+  const [hasMounted, setHasMounted] = useState(false);
+
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
+
   return (
     <header>
       <div className='leftH'>
@@ -61,8 +67,8 @@ export function Navbar() {
               <Link href='/add-liquidity' className='link' onClick={() => setIsEarnOpen(false)}>
                 <div className='px-4 py-2 hover:bg-[#2c364f] cursor-pointer'>Add liquidity</div>
               </Link>
-              <Link href='/create-liquidity' className='link' onClick={() => setIsEarnOpen(false)}>
-                <div className='px-4 py-2 hover:bg-[#2c364f] cursor-pointer'>Create liquidity</div>
+              <Link href='/create-pool' className='link' onClick={() => setIsEarnOpen(false)}>
+                <div className='px-4 py-2 hover:bg-[#2c364f] cursor-pointer'>Create pools</div>
               </Link>
             </div>
           )}
@@ -75,7 +81,13 @@ export function Navbar() {
         <div className='headerItem'>
        {/* onClick close tbd */}
         </div>
-        {isConnected ? (
+        {!hasMounted ? (
+          // Render the default state (matching server) before hydration
+          <div className='connectButton' onClick={() => open()}>
+            Connect
+          </div>
+        ) : isConnected ? (
+          // Render connected state after hydration
           <div className='relative group'>
             <div className='connectButton group-hover:hidden' onClick={() => close()}>
               {address?.slice(0, 6)}...{address?.slice(-4)}
@@ -85,6 +97,7 @@ export function Navbar() {
             </div>
           </div>
         ) : (
+          // Render disconnected state after hydration
           <div className='connectButton' onClick={() => open()}>
             Connect
           </div>
