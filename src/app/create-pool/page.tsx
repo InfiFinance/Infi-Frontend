@@ -419,7 +419,7 @@ const CreatePool = () => {
                     {selectedBaseToken ? (
                       <div className="flex items-center gap-2">
                         <img 
-                          src={selectedBaseToken.logoURI || "/vercel.svg"}
+                          src={selectedBaseToken.logoURI || "/token.png"}
                           alt={selectedBaseToken.symbol}
                           className="w-6 h-6 rounded-full" 
                         />
@@ -442,7 +442,7 @@ const CreatePool = () => {
                     {selectedQuoteToken ? (
                       <div className="flex items-center gap-2">
                         <img 
-                          src={selectedQuoteToken.logoURI || "/vercel.svg"} 
+                          src={selectedQuoteToken.logoURI || "/token.png"} 
                           alt={selectedQuoteToken.symbol}
                           className="w-6 h-6 rounded-full" 
                         />
@@ -580,7 +580,7 @@ const CreatePool = () => {
                 <div className="bg-[#2c3552] rounded-lg p-3 hover:bg-[#374264] transition-colors">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2">
-                      <img src={selectedBaseToken?.logoURI || "/vercel.svg"} alt={selectedBaseToken?.symbol || "Base"} className="w-6 h-6 rounded-full" />
+                      <img src={selectedBaseToken?.logoURI || "/token.png"} alt={selectedBaseToken?.symbol || "Base"} className="w-6 h-6 rounded-full" />
                       <div className="flex flex-col">
                         <span className="font-medium text-white">{selectedBaseToken?.symbol || 'Select Token'}</span>
                       </div>
@@ -601,7 +601,7 @@ const CreatePool = () => {
                 <div className="bg-[#2c3552] rounded-lg p-3 hover:bg-[#374264] transition-colors">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2">
-                      <img src={selectedQuoteToken?.logoURI || "/vercel.svg"} alt={selectedQuoteToken?.symbol || "Quote"} className="w-6 h-6 rounded-full" />
+                      <img src={selectedQuoteToken?.logoURI || "/token.png"} alt={selectedQuoteToken?.symbol || "Quote"} className="w-6 h-6 rounded-full" />
                       <div className="flex flex-col">
                         <span className="font-medium text-white">{selectedQuoteToken?.symbol || 'Select Token'}</span>
                       </div>
@@ -627,11 +627,11 @@ const CreatePool = () => {
                 <div className="text-sm text-gray-400 mb-2">Deposit Ratio</div>
                 <div className="flex items-center space-x-2 text-white">
                   <div className="flex items-center">
-                    <img src={selectedBaseToken?.logoURI || "/vercel.svg"} alt={selectedBaseToken?.symbol || "Base"} className="w-4 h-4 rounded-full mr-1" />
+                    <img src={selectedBaseToken?.logoURI || "/token.png"} alt={selectedBaseToken?.symbol || "Base"} className="w-4 h-4 rounded-full mr-1" />
                     <span>{selectedBaseToken?.symbol || 'BASE'} 50%</span>
                   </div>
                   <div className="flex items-center">
-                    <img src={selectedQuoteToken?.logoURI || "/vercel.svg"} alt={selectedQuoteToken?.symbol || "Quote"} className="w-4 h-4 rounded-full mr-1" />
+                    <img src={selectedQuoteToken?.logoURI || "/token.png"} alt={selectedQuoteToken?.symbol || "Quote"} className="w-4 h-4 rounded-full mr-1" />
                     <span>{selectedQuoteToken?.symbol || 'QUOTE'} 50%</span>
                   </div>
                 </div>

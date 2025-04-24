@@ -227,9 +227,49 @@ export default function Swap() {
          return;
       }
 
-      // 3. Get amountOutMin (last amount from query) and fee
-      const amountOutMin = queryRes.amounts[queryRes.amounts.length - 1];
+      // 3. Get expected amountOut (last amount from query)
+      const expectedAmountOut = queryRes.amounts[queryRes.amounts.length - 1];
+      
+      // --- START SLIPPAGE CALCULATION ---
+      // Convert slippage percentage to basis points (e.g., 2.5% -> 250 bps)
+      const slippageBps = BigInt(Math.round(slippage * 100)); // Ensure slippage is treated as percentage
+      const BPS_DIVISOR = BigInt(10000);
+      
+      // Calculate the minimum amount out considering slippage
+      // amountOutMin = expectedAmountOut * (10000 - slippageBps) / 10000
+      const amountOutMinWithSlippage = (BigInt(expectedAmountOut) * (BPS_DIVISOR - slippageBps)) / BPS_DIVISOR;
+      
+      console.log(`Expected Amount Out: ${ethers.formatUnits(expectedAmountOut, tokenTwo.decimals)} ${tokenTwo.symbol}`);
+      console.log(`Slippage: ${slippage}% (${slippageBps} bps)`);
+      console.log(`Minimum Amount Out (Wei): ${amountOutMinWithSlippage.toString()}`);
+      console.log(`Minimum Amount Out: ${ethers.formatUnits(amountOutMinWithSlippage, tokenTwo.decimals)} ${tokenTwo.symbol}`);
+      // --- END SLIPPAGE CALCULATION ---
+
       const fee = 0; // Assuming fee is always 0 based on previous examples
+
+      // --- START GAS PRICE CALCULATION ---
+      let txOptions: { gasPrice?: bigint, gasLimit?: number } = {}; // Initialize empty overrides
+      try {
+        const feeData = await ethersProvider.getFeeData();
+        const baseGasPrice = feeData.gasPrice;
+
+        if (baseGasPrice) {
+          console.log(`Base estimated gas price: ${ethers.formatUnits(baseGasPrice, 'gwei')} gwei`);
+          if (transactionMode === 'fast') {
+            const fastGasPrice = (baseGasPrice * BigInt(130)) / BigInt(100);
+            txOptions.gasPrice = fastGasPrice;
+            console.log(`Using FAST gas price: ${ethers.formatUnits(fastGasPrice, 'gwei')} gwei`);
+          } else {
+            txOptions.gasPrice = baseGasPrice; // Use default
+            console.log(`Using DEFAULT gas price: ${ethers.formatUnits(baseGasPrice, 'gwei')} gwei`);
+          }
+        } else {
+          console.warn("Could not fetch gas price from provider. Wallet will use default.");
+        }
+      } catch (gasError) {
+        console.warn("Error fetching fee data:", gasError);
+      }
+      // --- END GAS PRICE CALCULATION ---
 
       // 4. Check allowance
       const tokenContract = new ethers.Contract(
@@ -245,53 +285,49 @@ export default function Swap() {
       console.log("Current allowance (Wei):", allowance.toString());
 
       // 5. Approve if necessary (Compare BigInts correctly)
-      if (allowance < amountInWei) { // Use < for BigInt comparison
+      if (allowance < amountInWei) {
         console.log(`Allowance is ${allowance.toString()}, need ${amountInWei.toString()}. Approving...`);
         messageApi.info('Approval required. Please confirm in your wallet.');
         try {
-            // Use connect(signer) to get a Contract instance associated with the signer
-            // Cast to Contract to satisfy TS about the approve method
-            const approveTx = await (tokenContract.connect(signer) as ethers.Contract).approve(infiRouterAddress, amountInWei, { // Use amountInWei
-                 gasLimit: 100000, // Optional: Set a gas limit for approve
-                 // gasPrice: ethers.utils.parseUnits("1", 'gwei') // Optional: Set gas price
-            });
+            // Keep existing gasLimit for approve, but add calculated gasPrice
+            const approveOptions = { ...txOptions, gasLimit: 100000 }; 
+            const approveTx = await (tokenContract.connect(signer) as ethers.Contract).approve(
+                infiRouterAddress, 
+                amountInWei, 
+                approveOptions // <<< Pass combined options
+            );
             console.log("Approval tx sent:", approveTx.hash);
-            await approveTx.wait(); // Wait for approval confirmation
+            await approveTx.wait();
             console.log("Approval confirmed.");
             messageApi.success('Approval successful!');
-            // Potentially pause here or proceed directly to swap
         } catch (approveError: any) {
              console.error('Error during approval:', approveError);
              messageApi.error(`Approval failed: ${approveError.reason || approveError.message}`);
              return; // Stop if approval fails
         }
-
       } else {
          console.log("Sufficient allowance already granted.");
       }
 
-      // 6. Prepare arguments for swapNoSplit (Create COPIES of arrays)
+      // 6. Prepare arguments for swapNoSplit
       const pathCopy = [...queryRes.path];
       const adaptersCopy = [...queryRes.adapters];
       const tradeArgs = [
-            amountInWei,      // amountIn (BigInt)
-            amountOutMin,     // amountOutMin (BigInt)
-            pathCopy,         // path (copied array)
-            adaptersCopy      // adapters (copied array)
+            amountInWei,              // amountIn (BigInt)
+            amountOutMinWithSlippage, // <<< Use amount calculated with slippage
+            pathCopy,                 // path (copied array)
+            adaptersCopy              // adapters (copied array)
       ];
 
       console.log("Executing swap with args:", tradeArgs);
       messageApi.info('Executing swap. Please confirm in your wallet.');
 
-      // 7. Execute Swap
-      // Use connect(signer) to get a Contract instance associated with the signer
-      // Cast to Contract to satisfy TS about the swapNoSplit method
+      // 7. Execute Swap (Pass gas price override)
       const swapTx = await (InfiRouter.connect(signer) as ethers.Contract).swapNoSplit(
         tradeArgs,
         signer.address, // recipient
-        fee
-        // Optional: Add gas overrides if needed
-        // { gasLimit: 5000000, gasPrice: ethers.utils.parseUnits("1", 'gwei') }
+        fee,
+        txOptions // <<< Pass options with calculated gasPrice
       );
 
       console.log("Swap tx sent:", swapTx.hash);
@@ -304,8 +340,8 @@ export default function Swap() {
          messageApi.success({ content: 'Swap successful!', key: 'swapStatus', duration: 5 });
           // --- Update output amount ---
           // Option 1: Use the estimated amount from the query (less accurate after execution)
-          const estimatedOutputFormatted = ethers.formatUnits(amountOutMin, tokenTwo.decimals);
-          setTokenTwoAmount(parseFloat(estimatedOutputFormatted).toFixed(6));
+          // const estimatedOutputFormatted = ethers.formatUnits(amountOutMinWithSlippage, tokenTwo.decimals);
+          // setTokenTwoAmount(parseFloat(estimatedOutputFormatted).toFixed(6));
 
           // Option 2: Try to parse logs from the receipt (More Robust)
           // This requires knowing the exact event emitted by the router/adapter upon swap completion
@@ -316,7 +352,8 @@ export default function Swap() {
           // }
 
           // Clear input amount after successful swap?
-          // setTokenOneAmount('0');
+          setTokenOneAmount('0');
+          setTokenTwoAmount('0');
 
       } else {
           messageApi.error({ content: 'Swap transaction failed (reverted).', key: 'swapStatus', duration: 5 });
@@ -493,7 +530,7 @@ export default function Swap() {
             className=" assetOne"
             onClick={() => openModal(1)}
           >
-            <img src={tokenOne.logoURI} alt={tokenOne.symbol} className="logo" />
+            <img src={"/token.png"} alt={tokenOne.symbol} className="logo" />
             <span>{tokenOne.symbol}</span>
           </button>
 
@@ -501,7 +538,7 @@ export default function Swap() {
             className="assetTwo"
             onClick={() => openModal(2)}
           >
-            <img src={tokenTwo.logoURI} alt={tokenTwo.symbol} className="logo" />
+            <img src={"/token.png"} alt={tokenTwo.symbol} className="logo" />
             <span>{tokenTwo.symbol}</span>
           </button>
         </div>

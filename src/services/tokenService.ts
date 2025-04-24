@@ -81,13 +81,13 @@ export const  DEFAULT_TOKEN_LIST = {
       symbol: "OCTO",
       decimals: 18
     },  
-    // {
-    //   chainId: 50002,
-    //   address: "0xec5939822a1D9a9E0E089Fe9eBCb75A5F29D23d2",
-    //   name: "Teammate",
-    //   symbol: "TEAM",
-    //   decimals: 18
-    // }
+    {
+      chainId: 50002,
+      address: "0xec5939822a1D9a9E0E089Fe9eBCb75A5F29D23d2",
+      name: "Teammate",
+      symbol: "TEAM",
+      decimals: 18
+    }
   ]
 };
 
