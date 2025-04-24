@@ -20,8 +20,10 @@ import {
     POOL_ABI, 
     ERC20_ABI, 
     POSITION_MANAGER_ABI, 
-    FACTORY_ABI // Import FACTORY_ABI for getPool call
+    FACTORY_ABI, // Import FACTORY_ABI for getPool call
+    getGasOptions // Import getGasOptions
 } from '@/utils/contracts'; 
+import { processTickRange } from '@/utils/liquidityService';
 
 // Define Tick constants - Ensure these are defined
 const MIN_TICK = -887272;
@@ -142,8 +144,10 @@ const CreatePool = () => {
               throw new Error('Please set a valid initial price.');
           }
           if (rangeType === 'custom' && (!minPrice || !maxPrice || parseFloat(minPrice) < 0 || parseFloat(maxPrice) <= parseFloat(minPrice))) throw new Error('Invalid custom price range.');
-          console.log("Proceeding to create/initialize pool...");
-          await handleCreateAndAddLiquidity();
+          // Validation passed for Step 2, proceed to Step 3
+          setCurrentStep(3);
+          messageApi.success({ content: 'Price set.', key: 'stepProcessing', duration: 2 });
+          setIsProcessing(false);
 
       } else if (currentStep === 3) {
            if (!baseAmount || !quoteAmount || parseFloat(baseAmount) <= 0 || parseFloat(quoteAmount) <= 0) {
@@ -184,8 +188,11 @@ const CreatePool = () => {
           const sqrtPriceX96 = encodeSqrtPriceX96(priceNumber);
 
           console.log(`Creating pool: T0=${token0Address}, T1=${token1Address}, Fee=${feeTierNumber}, SqrtPrice=${sqrtPriceX96}`);
+          
+          const gasOptions = await getGasOptions(ethersProvider);
+          
           const createTx = await positionManager.createAndInitializePoolIfNecessary(
-              token0Address, token1Address, feeTierNumber, sqrtPriceX96, { gasLimit: 5000000 }
+              token0Address, token1Address, feeTierNumber, sqrtPriceX96, {gasLimit: 5000000, gasPrice: gasOptions.gasPrice  }
           );
           messageApi.loading({ content: 'Waiting for pool creation...', key: actionKey });
           const createReceipt = await createTx.wait();
@@ -200,30 +207,28 @@ const CreatePool = () => {
           console.log("Confirmed Pool Address:", actualPoolAddress);
           const poolContract = new ethers.Contract(actualPoolAddress, POOL_ABI, ethersProvider);
 
-          let tickSpacing = 1;
-          try {
-              const spacingResult = await poolContract.tickSpacing();
-              tickSpacing = Number(spacingResult); 
-              console.log(`Pool Tick Spacing: ${tickSpacing}`);
-          } catch { console.warn("Couldn't fetch tick spacing."); }
-
-          let tickLower: number, tickUpper: number;
-          if (rangeType === 'full') {
-              tickLower = Math.ceil(MIN_TICK / tickSpacing) * tickSpacing; 
-              tickUpper = Math.floor(MAX_TICK / tickSpacing) * tickSpacing;
-          } else {
-              let minP = parseFloat(minPrice); let maxP = parseFloat(maxPrice);
-              if (selectedBaseToken.address.toLowerCase() !== token0Address.toLowerCase()) { 
-                  const invMin = 1 / maxP; const invMax = 1 / minP;
-                  minP = invMin; maxP = invMax;
-              }
-              tickLower = priceToTick(minP); tickUpper = priceToTick(maxP);
-              tickLower = Math.ceil(tickLower / tickSpacing) * tickSpacing;
-              tickUpper = Math.floor(tickUpper / tickSpacing) * tickSpacing;
+          const actualPoolFeeBigInt = await poolContract.fee();
+          const actualPoolFee = Number(actualPoolFeeBigInt);
+          const slot0 = await poolContract.slot0();
+          const currentTick = Number(slot0.tick);
+          const currentPrice = Math.pow(1.0001, currentTick); 
+          console.log(`Pool actual fee: ${actualPoolFee}, currentTick: ${currentTick}`);
+          
+          if (feeTierNumber !== actualPoolFee) {
+              console.warn(`Warning: UI fee tier (${feeTierNumber}) does not match actual pool fee (${actualPoolFee}). Using actual pool fee for tick calculation.`);
           }
-          tickLower = Math.max(MIN_TICK, tickLower);
-          tickUpper = Math.min(MAX_TICK, tickUpper);
-          console.log(`Ticks: L=${tickLower}, U=${tickUpper}, Spacing=${tickSpacing}`);
+
+          console.log(`Range type selected: ${rangeType}`);
+          const minPriceStr = rangeType === 'full' ? '0' : minPrice;
+          const maxPriceStr = rangeType === 'full' ? '∞' : maxPrice;
+
+          const { tickLower, tickUpper } = processTickRange(
+              minPriceStr,
+              maxPriceStr,
+              currentPrice,
+              actualPoolFee
+          );
+          console.log(`Processed Ticks: L=${tickLower}, U=${tickUpper} (using actual pool fee: ${actualPoolFee})`);
 
           const baseAmt = ethers.parseUnits(baseAmount, selectedBaseToken.decimals);
           const quoteAmt = ethers.parseUnits(quoteAmount, selectedQuoteToken.decimals);
@@ -241,7 +246,7 @@ const CreatePool = () => {
                  const allowance = await contract.allowance(address, ADDRESSES.positionManager);
                  if (allowance < amt) {
                     messageApi.loading({ content: `Approving ${sym}...`, key: actionKey });
-                    const approveTx = await contract.approve(ADDRESSES.positionManager, amt);
+                    const approveTx = await contract.approve(ADDRESSES.positionManager, amt, gasOptions);
                     await approveTx.wait();
                     messageApi.success({content: `${sym} approved!`, key: actionKey, duration: 2});
                  }
@@ -252,14 +257,18 @@ const CreatePool = () => {
           
           const deadline = Math.floor(Date.now() / 1000) + 60 * 10;
           const mintParams = {
-              token0: token0Address, token1: token1Address, fee: feeTierNumber,
-              tickLower, tickUpper, amount0Desired: amount0, amount1Desired: amount1, 
+              token0: token0Address, token1: token1Address, fee: actualPoolFee,
+              tickLower, tickUpper,
+              amount0Desired: amount0, amount1Desired: amount1, 
               amount0Min: BigInt(0), amount1Min: BigInt(0),
               recipient: address, deadline,
           };
           messageApi.loading({ content: 'Adding liquidity...', key: actionKey });
-          const mintTx = await positionManager.mint(mintParams);
-          messageApi.loading({ content: 'Waiting for confirmation...', key: actionKey });
+          const mintTx = await positionManager.mint(
+              mintParams,
+              gasOptions
+          );
+          messageApi.loading({ content: 'Waiting for liquidity addition...', key: actionKey });
           const mintReceipt = await mintTx.wait();
           if (mintReceipt.status !== 1) throw new Error("Add liquidity transaction failed.");
           

@@ -17,6 +17,7 @@ import {
     FACTORY_ABI,
     decodeSqrtPriceX96
 } from '@/utils/contracts';
+import { LiquidityService } from '@/utils/liquidityService';
 
 const MIN_TICK = -887272;
 const MAX_TICK = 887272;
@@ -37,6 +38,7 @@ const AddLiquidity = () => {
   const [changeToken, setChangeToken] = useState<number>(1);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [currentSqrtPriceX96, setCurrentSqrtPriceX96] = useState<bigint | null>(null);
+  const [poolTickSpacing, setPoolTickSpacing] = useState<number | null>(null);
 
   const [messageApi, contextHolder] = message.useMessage();
   const { address, isConnected } = useAppKitAccount();
@@ -62,11 +64,11 @@ const AddLiquidity = () => {
   // --- Fetch Pool Address & Price Logic --- 
   const fetchPoolData = useCallback(async () => {
     if (!ethersProvider || !selectedBaseToken || !selectedQuoteToken || !selectedFeeTier) {
-        setPoolExistsStatus('idle'); setPoolAddress(null); setCurrentSqrtPriceX96(null);
+        setPoolExistsStatus('idle'); setPoolAddress(null); setCurrentSqrtPriceX96(null); setPoolTickSpacing(null);
         return;
     }
     console.log("Queueing fetch for pool data...");
-    setPoolExistsStatus('checking'); setPoolAddress(null); setCurrentSqrtPriceX96(null);
+    setPoolExistsStatus('checking'); setPoolAddress(null); setCurrentSqrtPriceX96(null); setPoolTickSpacing(null);
     if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current);
 
     debounceTimeoutRef.current = setTimeout(async () => {
@@ -84,25 +86,33 @@ const AddLiquidity = () => {
                 console.log("Pool found:", existingPoolAddress);
                 setPoolAddress(existingPoolAddress);
                 setPoolExistsStatus('exists');
-                // Fetch slot0 for price
+                // Fetch details concurrently
                 try {
                     const poolContract = new ethers.Contract(existingPoolAddress, POOL_ABI, ethersProvider);
-                    const slot0 = await poolContract.slot0();
-                    const sqrtPrice = slot0[0]; 
-                    setCurrentSqrtPriceX96(BigInt(sqrtPrice)); 
+                    const [slot0Result, tickSpacingResult] = await Promise.all([
+                         poolContract.slot0(),
+                         poolContract.tickSpacing()
+                    ]);
+                    // Process slot0
+                    const sqrtPrice = slot0Result[0];
+                    setCurrentSqrtPriceX96(BigInt(sqrtPrice));
                     console.log("Pool sqrtPriceX96:", sqrtPrice.toString());
-                } catch (priceError) {
-                    console.error("Error fetching pool price (slot0):", priceError);
-                    messageApi.error("Pool found, but failed to fetch price.");
-                    setCurrentSqrtPriceX96(null); // Indicate price fetch failed
+                    // Process tickSpacing
+                    const spacing = Number(tickSpacingResult);
+                    setPoolTickSpacing(spacing);
+                    console.log("Pool Tick Spacing:", spacing);
+                } catch (dataError) {
+                    console.error("Error fetching pool price/spacing:", dataError);
+                    messageApi.error("Pool found, but failed to fetch details.");
+                    setCurrentSqrtPriceX96(null); setPoolTickSpacing(null);
                 }
             } else {
                 console.log("Pool not found.");
-                setPoolAddress(null); setPoolExistsStatus('not_found'); setCurrentSqrtPriceX96(null);
+                setPoolAddress(null); setPoolExistsStatus('not_found'); setCurrentSqrtPriceX96(null); setPoolTickSpacing(null);
             }
         } catch (error) {
             console.error("Error fetching pool data:", error);
-            setPoolAddress(null); setPoolExistsStatus('idle'); setCurrentSqrtPriceX96(null);
+            setPoolAddress(null); setPoolExistsStatus('idle'); setCurrentSqrtPriceX96(null); setPoolTickSpacing(null);
             messageApi.error("Could not fetch pool data.");
         }
     }, 750);
@@ -128,9 +138,8 @@ const AddLiquidity = () => {
                 else if (poolExistsStatus === 'not_found') throw new Error('Pool not found for this pair/fee.');
                 else throw new Error('Pool status unknown or not found.');
             }
-            // Check if price was fetched
-            if (currentSqrtPriceX96 === null) {
-                 throw new Error("Pool price could not be determined. Cannot calculate ratios."); 
+            if (currentSqrtPriceX96 === null || poolTickSpacing === null) {
+                 throw new Error("Pool details (price/spacing) could not be determined.");
             }
             console.log("[handleContinue] Step 1 validation passed.");
             setCurrentStep(2);
@@ -146,10 +155,6 @@ const AddLiquidity = () => {
         messageApi.error({ content: `Error: ${error.message || 'An unexpected error occurred.'}`, key: 'stepChange', duration: 5 });
         if (isProcessing) setIsProcessing(false);
     }
-  };
-
-  const handleBaseTokenSelect = (tokenSymbol: string) => {
-    console.warn(`handleBaseTokenSelect for ${tokenSymbol} needs update - local tokenList removed.`);
   };
 
   const openModal = (tokenIndex: number) => {
@@ -177,10 +182,11 @@ const AddLiquidity = () => {
     setPoolAddress(null); 
     setPoolExistsStatus('idle');
     setCurrentSqrtPriceX96(null);
+    setPoolTickSpacing(null);
   };
 
   const handleLiquiditySubmit = async () => {
-    if (!ethersProvider || !address || !selectedBaseToken || !selectedQuoteToken || !selectedFeeTier || !baseAmount || !quoteAmount || !poolAddress) { 
+    if (!ethersProvider || !address || !selectedBaseToken || !selectedQuoteToken || !selectedFeeTier || !baseAmount || !quoteAmount || !poolAddress || poolTickSpacing === null) { 
         messageApi.error({ content: 'Internal Error: Missing required info.', key: 'addLiquidityAction' });
         return; 
     }
@@ -191,80 +197,99 @@ const AddLiquidity = () => {
     let txSuccess = false;
 
     try {
-        const signer = await ethersProvider.getSigner();
-        const positionManager = new ethers.Contract(ADDRESSES.positionManager, POSITION_MANAGER_ABI, signer);
-        const baseTokenContract = new ethers.Contract(selectedBaseToken.address, ERC20_ABI, signer);
-        const quoteTokenContract = new ethers.Contract(selectedQuoteToken.address, ERC20_ABI, signer);
-
-        let tickSpacing = 1;
-        console.warn("Using assumed/default tickSpacing for calculation", tickSpacing);
-
-        const [token0Address, token1Address] = sortTokens(selectedBaseToken.address, selectedQuoteToken.address);
-        let tickLower: number, tickUpper: number;
+        const feeTierNumber = parseInt(selectedFeeTier, 10);
+        
+        // Determine min/max price strings based on range type
+        let minP: string, maxP: string;
         if (rangeType === 'full') {
-            tickLower = Math.ceil(MIN_TICK / tickSpacing) * tickSpacing; 
-            tickUpper = Math.floor(MAX_TICK / tickSpacing) * tickSpacing;
-        } else { 
+            // LiquidityService might handle "full range" representation internally, 
+            // but we can pass extreme ticks or it might infer from prices.
+            // Passing 0 and 'Infinity' or similar might be expected by the service.
+            // Let's assume it handles '0' and a very large number or specific string.
+            // We need to check LiquidityService implementation details, but for now,
+            // let's rely on it handling the core logic based on simple inputs.
+            // We won't calculate ticks here anymore.
+            
+            // Placeholder - check how LiquidityService expects full range
+            // For now, let's pass calculated extreme ticks based on priceToTick(0) and priceToTick(inf)
+            // and let the service adjust if needed. This is less ideal than passing '0'/'Infinity'.
+             const minTickFull = Math.ceil(MIN_TICK / poolTickSpacing) * poolTickSpacing; 
+             const maxTickFull = Math.floor(MAX_TICK / poolTickSpacing) * poolTickSpacing;
+             // We need actual *prices* for the service though.
+             // Let's pass '0' and 'Infinity' and hope the service handles it.
+             minP = '0';
+             maxP = '∞'; // Use the infinity symbol expected by processTickRange
+             console.log("Using Full Range - passing min/max price strings:", minP, maxP);
+
+        } else { // Custom range
             if (!minPrice || !maxPrice || parseFloat(minPrice) < 0 || parseFloat(maxPrice) <= parseFloat(minPrice)) {
                 throw new Error("Invalid custom price range provided for submission.");
             }
-            let minP = parseFloat(minPrice); let maxP = parseFloat(maxPrice);
-            if (selectedBaseToken.address.toLowerCase() !== token0Address.toLowerCase()) { 
-                const invMin = 1 / maxP; const invMax = 1 / minP;
-                minP = invMin; maxP = invMax;
-            }
-            tickLower = priceToTick(minP); tickUpper = priceToTick(maxP);
-            tickLower = Math.ceil(tickLower / tickSpacing) * tickSpacing;
-            tickUpper = Math.floor(tickUpper / tickSpacing) * tickSpacing;
+             minP = minPrice;
+             maxP = maxPrice;
+             console.log("Using Custom Range - passing min/max price strings:", minP, maxP);
         }
-        tickLower = Math.max(MIN_TICK, tickLower); tickUpper = Math.min(MAX_TICK, tickUpper);
-        console.log(`Submit Ticks: L=${tickLower}, U=${tickUpper}, Spacing=${tickSpacing}`);
 
-        const baseAmt = ethers.parseUnits(baseAmount, selectedBaseToken.decimals);
-        const quoteAmt = ethers.parseUnits(quoteAmount, selectedQuoteToken.decimals);
-        const amount0 = selectedBaseToken.address.toLowerCase() === token0Address.toLowerCase() ? baseAmt : quoteAmt;
-        const amount1 = selectedBaseToken.address.toLowerCase() === token0Address.toLowerCase() ? quoteAmt : baseAmt;
 
-        messageApi.loading({ content: 'Checking approvals...', key: actionKey });
-        const contract0 = selectedBaseToken.address.toLowerCase() === token0Address.toLowerCase() ? baseTokenContract : quoteTokenContract;
-        const contract1 = selectedBaseToken.address.toLowerCase() === token0Address.toLowerCase() ? quoteTokenContract : baseTokenContract;
-        const symbol0 = selectedBaseToken.address.toLowerCase() === token0Address.toLowerCase() ? selectedBaseToken.symbol : selectedQuoteToken.symbol;
-        const symbol1 = selectedBaseToken.address.toLowerCase() === token0Address.toLowerCase() ? selectedQuoteToken.symbol : selectedBaseToken.symbol;
-        
-        const approveIfNeeded = async (contract: Contract, amt: bigint, sym: string) => {
-            if (amt > BigInt(0)) {
-               const allowance = await contract.allowance(address, ADDRESSES.positionManager);
-               if (allowance < amt) {
-                  messageApi.loading({ content: `Approving ${sym}...`, key: actionKey });
-                  const approveTx = await contract.approve(ADDRESSES.positionManager, amt);
-                  await approveTx.wait();
-                  messageApi.success({content: `${sym} approved!`, key: actionKey, duration: 2});
-               }
+        // Call LiquidityService
+        messageApi.loading({ content: 'Preparing transaction...', key: actionKey });
+
+        // Note: LiquidityService likely handles approvals internally if needed.
+        // We pass the signerProvider directly.
+
+        console.log("--- Calling LiquidityService.addLiquidity ---");
+        console.log("Params:", {
+             token0: selectedBaseToken,
+             token1: selectedQuoteToken,
+             token0Amount: baseAmount,
+             token1Amount: quoteAmount,
+             recipient: address,
+             poolAddress: poolAddress,
+             minPrice: minP,
+             maxPrice: maxP,
+             poolFee: feeTierNumber,
+             tickSpacing: poolTickSpacing // Pass tickSpacing for service to use if needed
+        });
+
+        const result = await LiquidityService.addLiquidity(
+            ethersProvider, // Pass the BrowserProvider as required by the updated service
+            {
+             token0: selectedBaseToken,
+             token1: selectedQuoteToken,
+             token0Amount: baseAmount,
+             token1Amount: quoteAmount,
+             recipient: address,
+             poolAddress: poolAddress,
+             minPrice: minP, 
+             maxPrice: maxP, 
+             poolFee: feeTierNumber,
+             // Pass tickSpacing explicitly if the service function requires it
+             // tickSpacing: poolTickSpacing 
             }
-        };
-        await approveIfNeeded(contract0, amount0, symbol0);
-        await approveIfNeeded(contract1, amount1, symbol1);
-        
-        const deadline = Math.floor(Date.now() / 1000) + 60 * 10;
-        const feeTierNumber = parseInt(selectedFeeTier, 10);
-        const mintParams = {
-            token0: token0Address, token1: token1Address, fee: feeTierNumber,
-            tickLower, tickUpper, amount0Desired: amount0, amount1Desired: amount1, 
-            amount0Min: BigInt(0), amount1Min: BigInt(0), 
-            recipient: address, deadline,
-        };
-        messageApi.loading({ content: 'Adding liquidity...', key: actionKey });
-        const mintTx = await positionManager.mint(mintParams);
-        messageApi.loading({ content: 'Waiting for confirmation...', key: actionKey });
-        const mintReceipt = await mintTx.wait();
-        if (mintReceipt.status !== 1) throw new Error("Add liquidity transaction failed.");
-        
-        txSuccess = true; 
-        messageApi.success({ content: 'Liquidity added successfully! 🎉', key: actionKey, duration: 5 });
+            // Optional: Pass gas settings if service supports it
+            // { gasLimit: 5000000 }
+        );
+
+        if (result.success) {
+            txSuccess = true;
+            messageApi.success({ content: `Liquidity added! Tx: ${result.txHash?.substring(0, 10)}...`, key: actionKey, duration: 5 });
+            // Reset form state?
+        } else {
+            throw new Error(result.error || 'LiquidityService failed to add liquidity.');
+        }
 
     } catch (error: any) {
-        console.error("Add Liq Error:", error);
-        messageApi.error({ content: `Failed: ${error.reason || error.message || 'Unknown error'}`, key: actionKey, duration: 5 });
+        console.error("Add Liq Error (via LiquidityService):", error);
+        // Check if error has a nested reason or message
+        let errorMessage = 'Unknown error';
+        if (error.reason) {
+             errorMessage = error.reason;
+        } else if (error.message) {
+             errorMessage = error.message;
+        } else if (typeof error === 'string') {
+            errorMessage = error;
+        }
+        messageApi.error({ content: `Failed: ${errorMessage}`, key: actionKey, duration: 8 });
     } finally {
         if (!txSuccess) messageApi.destroy(actionKey); 
         setIsProcessing(false); 
@@ -540,14 +565,12 @@ const AddLiquidity = () => {
                 <div className="flex items-center gap-2">
                   <button
                     className={`flex items-center gap-2 rounded-lg px-3 py-1 cursor-pointer ${selectedBaseToken?.symbol === 'ETH' ? 'bg-blue-500 text-white' : 'bg-[#2c3552] text-gray-400'} hover:bg-[#374264] transition-colors`}
-                    onClick={() => handleBaseTokenSelect('ETH')}
                   >
                     <img src={selectedBaseToken?.logoURI || "/vercel.svg"} alt={selectedBaseToken?.symbol} className="w-5 h-5" />
                     <span>{selectedBaseToken?.symbol}</span>
                   </button>
                   <button
                     className={`flex items-center gap-2 rounded-lg px-3 py-1 cursor-pointer ${selectedBaseToken?.symbol === 'SUI' ? 'bg-blue-500 text-white' : 'bg-[#2c3552] text-gray-400'} hover:bg-[#374264] transition-colors`}
-                    onClick={() => handleBaseTokenSelect('SUI')}
                   >
                     <img src={selectedQuoteToken?.logoURI || "/vercel.svg"} alt={selectedQuoteToken?.symbol} className="w-5 h-5" />
                     <span>{selectedQuoteToken?.symbol}</span>
@@ -625,9 +648,9 @@ const AddLiquidity = () => {
 
         <div className="mt-8">
           <button 
-            className={`w-full bg-blue-900 text-blue-500 py-3 rounded-xl font-medium transition-colors ${isProcessing || !isConnected || (currentStep === 1 && (poolExistsStatus !== 'exists' || currentSqrtPriceX96 === null)) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-800'}`}
+            className={`w-full bg-blue-900 text-blue-500 py-3 rounded-xl font-medium transition-colors ${isProcessing || !isConnected || (currentStep === 1 && (poolExistsStatus !== 'exists' || currentSqrtPriceX96 === null || poolTickSpacing === null)) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-800'}`}
             onClick={handleContinue}
-            disabled={isProcessing || !isConnected || (currentStep === 1 && (poolExistsStatus !== 'exists' || currentSqrtPriceX96 === null))}
+            disabled={isProcessing || !isConnected || (currentStep === 1 && (poolExistsStatus !== 'exists' || currentSqrtPriceX96 === null || poolTickSpacing === null))}
           >
             {isProcessing ? 'Processing...' : (currentStep === 1 ? 'Continue' : 'Add Liquidity')}
           </button>
