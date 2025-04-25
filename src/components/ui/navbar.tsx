@@ -14,7 +14,6 @@ import {  useAppKit, useAppKitAccount, useDisconnect } from '@reown/appkit/react
 // const { address, isConnected, caipAddress, status, embeddedWalletInfo } =
 //   useAppKitAccount();
 
-
 export function Navbar() {
   const { open, close } = useAppKit()
   const { address, isConnected, caipAddress, status, embeddedWalletInfo } =
@@ -29,10 +28,39 @@ export function Navbar() {
     setHasMounted(true);
   }, []);
 
+  // Add the effect here, inside the component function scope
+  useEffect(() => {
+    const saveUser = async (walletAddress: string) => {
+      try {
+        const response = await fetch('/api/users', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ walletAddress }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          console.error('Error saving user:', data.error || 'Unknown error');
+        } else {
+          console.log('User saved/verified:', data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch /api/users:', error);
+      }
+    };
+
+    // Only run on the client-side after mount and when connected
+    if (hasMounted && isConnected && address) {
+      console.log('Wallet connected, attempting to save user:', address);
+      saveUser(address);
+    }
+  }, [isConnected, address, hasMounted]); // Add hasMounted dependency
+
   return (
     <header>
       <div className='leftH'>
-        <Image src={"vercel.svg"} alt='eth' className='logo' width={100} height={100}/>
+        <Image src={"/infilogo.jpg"} alt='eth' className='logo' width={100} height={100}/>
         <Link href='/' className='link'>
           <div className='headerItem'>Swap</div>  
         </Link>
