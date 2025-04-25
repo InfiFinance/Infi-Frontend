@@ -377,7 +377,8 @@ export default function Swap() {
     <div className="bg-[#1f2639] rounded-lg p-6 border border-[#21273a] w-[400px]">
       <div className="flex justify-between items-center mb-6">
         <h3 className="text-lg font-medium text-white">Settings</h3>
-        <button onClick={() => setIsSettingsOpen(false)} className="text-gray-400 hover:text-white">
+        <button onClick={() => setIsSettingsOpen(false)}
+          className="text-gray-400 hover:text-white hover:cursor-pointer">
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -391,19 +392,19 @@ export default function Swap() {
           <div className="flex gap-2 mb-2">
             <button
               onClick={() => { setSlippage(0.5); setCustomSlippage(''); }}
-              className={`flex-1 py-2 px-4 rounded-lg font-medium ${slippage === 0.5 ? 'bg-blue-500 text-white' : 'bg-[#2c3552] text-gray-400'} hover:bg-[#374264] transition-colors`}
+              className={`flex-1 py-2 px-4 rounded-lg font-medium ${slippage === 0.5 ? 'bg-blue-500 text-white' : 'bg-[#2c3552] text-gray-400'} hover:bg-[#374264] transition-colors hover:cursor-pointer`}
             >
               0.5%
             </button>
             <button
               onClick={() => { setSlippage(2.5); setCustomSlippage(''); }}
-              className={`flex-1 py-2 px-4 rounded-lg font-medium ${slippage === 2.5 ? 'bg-blue-500 text-white' : 'bg-[#2c3552] text-gray-400'} hover:bg-[#374264] transition-colors`}
+              className={`flex-1 py-2 px-4 rounded-lg font-medium ${slippage === 2.5 ? 'bg-blue-500 text-white' : 'bg-[#2c3552] text-gray-400'} hover:bg-[#374264] transition-colors hover:cursor-pointer`}
             >
               2.5%
             </button>
             <button
               onClick={() => { setSlippage(5.0); setCustomSlippage(''); }}
-              className={`flex-1 py-2 px-4 rounded-lg font-medium ${slippage === 5.0 ? 'bg-blue-500 text-white' : 'bg-[#2c3552] text-gray-400'} hover:bg-[#374264] transition-colors`}
+              className={`flex-1 py-2 px-4 rounded-lg font-medium ${slippage === 5.0 ? 'bg-blue-500 text-white' : 'bg-[#2c3552] text-gray-400'} hover:bg-[#374264] transition-colors hover:cursor-pointer`}
             >
               5.0%
             </button>
@@ -429,13 +430,13 @@ export default function Swap() {
           <div className="flex gap-2">
             <button
               onClick={() => setTransactionMode('default')}
-              className={`flex-1 py-2 px-4 rounded-lg font-medium ${transactionMode === 'default' ? 'bg-blue-500 text-white' : 'bg-[#2c3552] text-gray-400'} hover:bg-[#374264] transition-colors`}
+              className={`flex-1 py-2 px-4 rounded-lg font-medium ${transactionMode === 'default' ? 'bg-blue-500 text-white' : 'bg-[#2c3552] text-gray-400'} hover:bg-[#374264] transition-colors hover:cursor-pointer`}
             >
               Default
             </button>
             <button
               onClick={() => setTransactionMode('fast')}
-              className={`flex-1 py-2 px-4 rounded-lg font-medium ${transactionMode === 'fast' ? 'bg-blue-500 text-white' : 'bg-[#2c3552] text-gray-400'} hover:bg-[#374264] transition-colors`}
+              className={`flex-1 py-2 px-4 rounded-lg font-medium ${transactionMode === 'fast' ? 'bg-blue-500 text-white' : 'bg-[#2c3552] text-gray-400'} hover:bg-[#374264] transition-colors hover:cursor-pointer`}
             >
               Fast Mode
             </button>
@@ -465,7 +466,7 @@ export default function Swap() {
       <div className="flex justify-end mt-6">
         <button
           onClick={() => setIsSettingsOpen(false)}
-          className="bg-blue-900 text-blue-500 px-6 py-2 rounded-xl font-medium hover:bg-blue-800 transition-colors"
+          className="bg-blue-900 text-blue-500 px-6 py-2 rounded-xl font-medium hover:bg-blue-800 transition-colors hover:cursor-pointer"
         >
           Save
         </button>
@@ -498,7 +499,7 @@ export default function Swap() {
           </Modal>
           <button
             onClick={() => setIsSettingsOpen(true)}
-            className="text-gray-500 hover:text-white cursor-pointer transition-colors text-xl"
+            className="text-gray-500 hover:text-white cursor-pointer transition-colors text-xl hover:cursor-pointer"
           >
             <SettingOutlined />
           </button>
@@ -546,7 +547,7 @@ export default function Swap() {
         <button
           className={`w-full py-4 rounded-xl font-bold text-lg transition-colors ${!tokenOneAmount || !isConnected
             ? 'bg-blue-900/40 text-blue-500/60 cursor-not-allowed'
-            : 'bg-blue-900 text-blue-500 hover:bg-blue-800'}`}
+            : 'bg-blue-900 text-blue-500 hover:bg-blue-800 hover:cursor-pointer'}`}
           onClick={fetchDex}
           disabled={!tokenOneAmount || !isConnected}
         >

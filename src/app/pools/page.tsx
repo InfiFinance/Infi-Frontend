@@ -88,13 +88,13 @@ const PoolsPage = () => {
                 <div className="flex items-center space-x-4">
                     <div className="flex bg-[#1f2639] rounded-lg overflow-hidden">
                         <button 
-                            className={`px-6 py-2 ${activeTab === 'pools' ? 'bg-blue-500 text-white' : 'text-gray-400 hover:text-white'} font-medium transition-colors`}
+                            className={`px-6 py-2 ${activeTab === 'pools' ? 'bg-blue-500 text-white hover:cursor-pointer'  : 'hover:cursor-pointer text-gray-400 hover:text-white'} font-medium transition-colors`}
                             onClick={() => setActiveTab('pools')}
                         >
                             Pools
                         </button>
                         <button 
-                            className={`px-6 py-2 ${activeTab === 'positions' ? 'bg-blue-500 text-white' : 'text-gray-400 hover:text-white'} font-medium transition-colors`}
+                            className={`px-6 py-2 ${activeTab === 'positions' ? 'bg-blue-500 text-white hover:cursor-pointer' : 'hover:cursor-pointer text-gray-400 hover:text-white'} font-medium transition-colors`}
                             onClick={() => setActiveTab('positions')}
                         >
                             Positions
@@ -103,13 +103,13 @@ const PoolsPage = () => {
                 </div>
                 <div className="flex items-center space-x-3">
                     <Link href='/pools/add' className='link'>
-                        <button className="bg-blue-900 text-blue-500 px-4 py-2 rounded-xl font-medium hover:bg-blue-800 transition-colors flex items-center gap-2">
+                        <button className="bg-blue-900 text-blue-500 px-4 py-2 rounded-xl font-medium hover:bg-blue-800 transition-colors flex items-center gap-2 hover:cursor-pointer">
                             Add Liquidity
                             <Plus size={16} />
                         </button>
                     </Link>
                     <Link href='/pools/create' className='link'>
-                        <button className="bg-blue-900 text-blue-500 px-4 py-2 rounded-xl font-medium hover:bg-blue-800 transition-colors flex items-center gap-2">
+                        <button className="bg-blue-900 text-blue-500 px-4 py-2 rounded-xl font-medium hover:bg-blue-800 transition-colors flex items-center gap-2 hover:cursor-pointer">
                             Create new pool
                             <Plus size={16} />
                         </button>
@@ -129,7 +129,7 @@ const PoolsPage = () => {
                     />
                 </div>
                 <div className="flex items-center space-x-4">
-                    <label className="flex items-center space-x-2 text-sm cursor-pointer text-gray-300">
+                    {/* <label className="flex items-center space-x-2 text-sm cursor-pointer text-gray-300">
                         <input
                             type="checkbox"
                             checked={showWatchlist}
@@ -137,8 +137,8 @@ const PoolsPage = () => {
                             className="form-checkbox text-blue-500 rounded bg-[#1f2639] border-[#21273a]"
                         />
                         <span>Watchlist</span>
-                    </label>
-                    <label className="flex items-center space-x-2 text-sm cursor-pointer text-gray-300">
+                    </label> */}
+                    {/* <label className="flex items-center space-x-2 text-sm cursor-pointer text-gray-300">
                         <input
                             type="checkbox"
                             checked={showIncentivized}
@@ -146,7 +146,7 @@ const PoolsPage = () => {
                             className="form-checkbox text-blue-500 rounded bg-[#1f2639] border-[#21273a]"
                         />
                         <span>Incentivized Only</span>
-                    </label>
+                    </label> */}
                     <label className="flex items-center space-x-2 text-sm cursor-pointer text-gray-300">
                         <span>All pools</span>
                         <div className="relative inline-block w-10 mr-2 align-middle select-none">
@@ -176,8 +176,58 @@ const PoolsPage = () => {
                                 <th className="text-right px-4">Liquidity</th>
                                 <th className="text-right px-4">Volume (24H)</th>
                                 <th className="text-right px-4">Fees (24H)</th>
-                                <th className="text-center px-4">Rewards</th>
-                                <th className="text-right px-4">APR</th>
+                                {/* <th className="text-center px-4">Rewards</th> */}
+                                {/* <th className="text-right px-4">Clear</th> */}
+                                <th className="text-right px-4">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {pools.map((pool, index) => (
+                                <tr key={index} className="border-b border-[#21273a] hover:bg-[#2c3552] transition-colors">
+                                    <td className="py-4 px-4">
+                                        <div className="flex items-center space-x-2">
+                                            <div className="flex -space-x-2">
+                                                <img src={"/vercel.svg"} alt={pool.token1.symbol} className="w-6 h-6 rounded-full ring-2 ring-[#1f2639]" />
+                                                <img src={"/vercel.svg"} alt={pool.token2.symbol} className="w-6 h-6 rounded-full ring-2 ring-[#1f2639]" />
+                                            </div>
+                                            <span className="text-white">{pool.token1.symbol} - {pool.token2.symbol}</span>
+                                            <span className="text-gray-400 text-sm">{pool.fee}</span>
+                                        </div>
+                                    </td>
+                                    <td className="text-right px-4 text-white">{pool.liquidity}</td>
+                                    <td className="text-right px-4 text-white">{pool.volume24h}</td>
+                                    <td className="text-right px-4 text-white">{pool.fees24h}</td>
+                                    {/* <td className="text-center px-4">
+                                        <div className="flex items-center justify-center space-x-1">
+                                            {pool.rewards.map((reward, i) => (
+                                                <span key={i} className="px-2 py-0.5 bg-blue-900/20 text-blue-500 rounded text-xs">
+                                                    {reward}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </td> */}
+                                    {/* <td className="text-right px-4 text-blue-500">{pool.apr}</td>  */}
+                                    <td className="text-right px-4">
+                                        <button className="bg-blue-900 text-blue-500 px-4 py-1 rounded-xl text-sm font-medium hover:bg-blue-800 transition-colors hover:cursor-pointer">
+                                            Deposit
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            ) : (
+                <div className="overflow-x-auto bg-[#1f2639] rounded-lg border border-[#21273a]">
+                    <table className="w-full">
+                        <thead>
+                            <tr className="text-gray-400 text-sm border-b border-[#21273a]">
+                                <th className="text-left py-4 px-4">Pools</th>
+                                <th className="text-right px-4">Liquidity</th>
+                                <th className="text-right px-4">Volume (24H)</th>
+                                <th className="text-right px-4">Fees (24H)</th>
+                                <th className="text-center px-4">Fee earned</th>
+                                <th className="text-right px-4">Clear Position</th>
                                 <th className="text-right px-4">Actions</th>
                             </tr>
                         </thead>
@@ -200,26 +250,28 @@ const PoolsPage = () => {
                                     <td className="text-center px-4">
                                         <div className="flex items-center justify-center space-x-1">
                                             {pool.rewards.map((reward, i) => (
-                                                <span key={i} className="px-2 py-0.5 bg-blue-900/20 text-blue-500 rounded text-xs">
-                                                    {reward}
-                                                </span>
+                                                <div key={i} className="flex items-center space-x-1">
+                                                    <span className="text-white text-xs">100</span>
+                                                    <span className="px-2 py-0.5 bg-blue-900/20 text-blue-500 rounded text-xs">
+                                                        {reward}
+                                                    </span>
+                                                    {i < pool.rewards.length - 1 && <span className="text-gray-400">+</span>}
+                                                </div>
                                             ))}
                                         </div>
                                     </td>
-                                    <td className="text-right px-4 text-blue-500">{pool.apr}</td>
+                                    <td className="text-right px-4"> <button className="bg-red-900/50 text-red-400 px-4 py-1 rounded-xl text-sm font-medium hover:bg-red-800/50 transition-colors hover:cursor-pointer">
+                                            Remove
+                                        </button></td>
                                     <td className="text-right px-4">
-                                        <button className="bg-blue-900 text-blue-500 px-4 py-1 rounded-xl text-sm font-medium hover:bg-blue-800 transition-colors">
-                                            Deposit
+                                        <button className="bg-blue-900 text-blue-500 px-4 py-1 rounded-xl text-sm font-medium hover:bg-blue-800 transition-colors hover:cursor-pointer">
+                                            Claim
                                         </button>
                                     </td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
-                </div>
-            ) : (
-                <div className="bg-[#1f2639] p-6 rounded-lg border border-[#21273a] text-center text-gray-400">
-                    <p>Positions view coming soon</p>
                 </div>
             )}
         </div>
