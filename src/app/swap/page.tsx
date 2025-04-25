@@ -23,8 +23,8 @@ interface SwapProps {
 export default function Swap() {
   const [slippage, setSlippage] = useState<number>(2.5);
   const [messageApi, contextHolder] = message.useMessage();
-  const [tokenOneAmount, setTokenOneAmount] = useState<string>('0');
-  const [tokenTwoAmount, setTokenTwoAmount] = useState<string>('0');
+  const [tokenOneAmount, setTokenOneAmount] = useState<string>('');
+  const [tokenTwoAmount, setTokenTwoAmount] = useState<string>('');
   const [tokenOne, setTokenOne] = useState<TokenInfo>(DEFAULT_TOKEN_LIST.tokens[0]);
   const [tokenTwo, setTokenTwo] = useState<TokenInfo>(DEFAULT_TOKEN_LIST.tokens[1]);
   const [isOpen, setIsOpen] = useState<boolean>(false);
@@ -352,8 +352,8 @@ export default function Swap() {
           // }
 
           // Clear input amount after successful swap?
-          setTokenOneAmount('0');
-          setTokenTwoAmount('0');
+          setTokenOneAmount('');
+          setTokenTwoAmount('');
 
       } else {
           messageApi.error({ content: 'Swap transaction failed (reverted).', key: 'swapStatus', duration: 5 });
