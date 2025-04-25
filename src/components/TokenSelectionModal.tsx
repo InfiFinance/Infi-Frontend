@@ -157,12 +157,15 @@ export default function TokenSelectionModal({
         setIsLoading(false);
       }}
     >
-      <Input
-        placeholder="Search name or paste address"
-        value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
-        className="my-4"
-      />
+      <div className="px-4">
+        <input 
+          type="text" 
+          placeholder="Search name or paste address"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full bg-[#2c3552] text-white rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-blue-500 hover:bg-[#374264] transition-colors placeholder-gray-400 mb-1 mt-1"
+        />
+      </div>
       <div className="border-t border-gray-700 mt-4 space-y-2 max-h-[400px] overflow-y-auto">
         {isLoading ? (
           <div className="flex justify-center items-center h-32">
