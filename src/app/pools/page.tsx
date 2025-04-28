@@ -1,13 +1,61 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from 'next/link'
-import { Search, Plus } from "lucide-react";
+import { Search, Plus, Loader2 } from "lucide-react";
 // import { Button } from "../ui/button";
 // import suiIcon from "../../assets/sui.png";
 // import usdcIcon from "../../assets/usdc.svg";
 import { useNavigate } from "react-router-dom";
 import Logo from '../../../public/vercel.svg';
+import { ethers, BrowserProvider, Eip1193Provider, Contract } from 'ethers';
+import { useAppKitAccount, useAppKitProvider } from '@reown/appkit/react';
+import { LiquidityService, tickToPrice } from '@/utils/liquidityService';
+import { fetchTokenInfo } from '@/services/tokenService';
+import { ADDRESSES } from '@/constants/addresses';
+import { FACTORY_ABI, POOL_ABI, POSITION_MANAGER_ABI } from '@/utils/contracts';
 
+interface TokenInfo {
+  symbol: string;
+  icon: string; // Or appropriate type for icon source
+  decimals: number;
+  address: string;
+  logoURI?: string; // Add optional logoURI from token service
+}
+
+interface UnclaimedFees {
+  amount0: bigint;
+  amount1: bigint;
+}
+
+interface Position {
+  tokenId: string;
+  token0: TokenInfo;
+  token1: TokenInfo;
+  fee: number;
+  liquidity: bigint; // Use bigint
+  tickLower: number;
+  tickUpper: number;
+  inRange: boolean;
+  unclaimedFees?: UnclaimedFees;
+  // Optional UI state properties
+  isLoading?: boolean;
+  isCollecting?: boolean;
+  collectMessage?: string;
+  error?: string;
+  txHash?: string;
+}
+
+// Type returned by the actual LiquidityService.getUserPositions (assuming structure)
+// This helps with type safety when processing the result
+interface RawPositionData {
+    tokenId: string | bigint; // Allow both initially
+    token0: string;
+    token1: string;
+    fee: number | string;
+    liquidity: string | bigint;
+    tickLower: number | string;
+    tickUpper: number | string;
+}
 
 const PoolsPage = () => {
     //   const navigate = useNavigate();
@@ -15,7 +63,25 @@ const PoolsPage = () => {
     const [showWatchlist, setShowWatchlist] = useState(false);
     const [showIncentivized, setShowIncentivized] = useState(false);
     const [showAllPools, setShowAllPools] = useState(false);
-    const [activeTab, setActiveTab] = useState('pools');
+    const [activeTab, setActiveTab] = useState('positions');
+
+    // State for positions tab
+    const [positions, setPositions] = useState<Position[]>([]);
+    const [loadingPositions, setLoadingPositions] = useState<boolean>(true);
+    const { address, isConnected } = useAppKitAccount();
+    const { walletProvider } = useAppKitProvider("eip155");
+    const [provider, setProvider] = useState<BrowserProvider | null>(null);
+
+    // Effect to create ethers provider
+    useEffect(() => {
+        if (walletProvider) {
+            // Cast walletProvider to Eip1193Provider
+            const ethersProvider = new ethers.BrowserProvider(walletProvider as Eip1193Provider);
+            setProvider(ethersProvider);
+        } else {
+            setProvider(null);
+        }
+    }, [walletProvider]);
 
     // Dummy data for pools
     const pools = [
@@ -71,6 +137,287 @@ const PoolsPage = () => {
         },
     ];
 
+    // Fetch User Positions Logic (Re-added)
+    useEffect(() => {
+        const fetchUserPositions = async () => {
+            if (!isConnected || !address || !provider) {
+                setLoadingPositions(false);
+                setPositions([]);
+                return;
+            }
+
+            setLoadingPositions(true);
+            try {
+                const result = await LiquidityService.getUserPositions(provider, address);
+
+                if (!result.success || !result.positions) {
+                    throw new Error(result.error || 'Failed to fetch positions');
+                }
+
+                const positionsWithLiquidity = result.positions.filter(
+                    (position: RawPositionData) => BigInt(position.liquidity) !== BigInt(0)
+                );
+
+                const factory = new Contract(ADDRESSES.factory, FACTORY_ABI, provider);
+
+                const enhancedPositionsPromises = positionsWithLiquidity.map(async (position: RawPositionData): Promise<Position | null> => {
+                    try {
+                        const network = await provider.getNetwork();
+                        const chainId = network.chainId;
+
+                        const [token0InfoResult, token1InfoResult] = await Promise.all([
+                            fetchTokenInfo(position.token0, Number(chainId), provider),
+                            fetchTokenInfo(position.token1, Number(chainId), provider)
+                        ]);
+
+                        if (!token0InfoResult || !token1InfoResult) {
+                            console.error(`Failed to fetch token info for pair ${position.token0}/${position.token1}`);
+                            return null;
+                        }
+
+                        const token0Data: TokenInfo = {
+                            symbol: token0InfoResult.symbol,
+                            icon: token0InfoResult.logoURI || '../../../public/vercel.svg',
+                            decimals: token0InfoResult.decimals,
+                            address: position.token0,
+                            logoURI: token0InfoResult.logoURI
+                        };
+                        const token1Data: TokenInfo = {
+                            symbol: token1InfoResult.symbol,
+                            icon: token1InfoResult.logoURI || '../../../public/vercel.svg',
+                            decimals: token1InfoResult.decimals,
+                            address: position.token1,
+                            logoURI: token1InfoResult.logoURI
+                        };
+
+                        const feesResult = await LiquidityService.getUnclaimedFees(
+                            provider,
+                            position.tokenId.toString(),
+                            address
+                        );
+
+                        const poolAddress = await factory.getPool(
+                            position.token0,
+                            position.token1,
+                            Number(position.fee)
+                        );
+
+                        let inRange = false;
+                        if (poolAddress && poolAddress !== ethers.ZeroAddress) {
+                            const pool = new Contract(poolAddress, POOL_ABI, provider);
+                            try {
+                                const slot0 = await pool.slot0();
+                                const currentTick = Number(slot0.tick);
+                                inRange = currentTick >= Number(position.tickLower) && currentTick <= Number(position.tickUpper);
+                            } catch (error) {
+                                console.error('Error getting pool state for pool:', poolAddress, error);
+                                inRange = false;
+                            }
+                        }
+
+                        const posTokenId = position.tokenId.toString();
+                        const posFee = Number(position.fee);
+                        const posLiquidity = BigInt(position.liquidity);
+                        const posTickLower = Number(position.tickLower);
+                        const posTickUpper = Number(position.tickUpper);
+
+                        return {
+                            tokenId: posTokenId,
+                            token0: token0Data,
+                            token1: token1Data,
+                            fee: posFee,
+                            liquidity: posLiquidity,
+                            tickLower: posTickLower,
+                            tickUpper: posTickUpper,
+                            inRange,
+                            unclaimedFees: (feesResult.success && feesResult.fees) ? {
+                                amount0: BigInt(feesResult.fees.amount0),
+                                amount1: BigInt(feesResult.fees.amount1)
+                            } : undefined
+                        };
+                    } catch (mapError) {
+                        console.error("Error processing position:", position.tokenId, mapError);
+                        return null;
+                    }
+                });
+
+                const enhancedPositionsResults = await Promise.all(enhancedPositionsPromises);
+                setPositions(enhancedPositionsResults.filter((p): p is Position => p !== null));
+
+            } catch (error) {
+                console.error('Error fetching positions:', error);
+                setPositions([]);
+            } finally {
+                setLoadingPositions(false);
+            }
+        };
+
+        fetchUserPositions();
+    }, [isConnected, address, provider]);
+
+    // Handle remove liquidity (Re-added)
+    const handleRemoveLiquidity = async (positionId: string) => {
+        if (!provider || !address) return;
+
+        setPositions(positions.map(p =>
+            p.tokenId === positionId ? { ...p, isLoading: true, error: undefined, collectMessage: undefined, txHash: undefined } : p
+        ));
+
+        try {
+            const result = await LiquidityService.removeLiquidity(
+                provider,
+                positionId,
+                address
+            );
+
+            if (result.success) {
+                setPositions(prev => prev.filter(p => p.tokenId !== positionId));
+            } else {
+                setPositions(positions.map(p =>
+                    p.tokenId === positionId ? { ...p, isLoading: false, error: result.error || 'Failed to remove liquidity' } : p
+                ));
+            }
+        } catch (error: any) {
+            console.error('Error removing liquidity:', error);
+            setPositions(positions.map(p =>
+                p.tokenId === positionId ? { ...p, isLoading: false, error: error.message || 'Failed to remove liquidity' } : p
+            ));
+        }
+    };
+
+    // Handle collect fees (Re-added)
+    const handleCollectFees = async (position: Position) => {
+        if (!provider || !address) return;
+
+        setPositions(positions.map(p =>
+            p.tokenId === position.tokenId ? {
+                ...p,
+                isCollecting: true,
+                collectMessage: 'Preparing collection...',
+                error: undefined,
+                txHash: undefined
+            } : p
+        ));
+
+        try {
+            const signer = await provider.getSigner();
+            const positionManager = new Contract(
+                ADDRESSES.positionManager,
+                POSITION_MANAGER_ABI,
+                signer
+            );
+
+            const MAX_UINT128 = (BigInt(1) << BigInt(128)) - BigInt(1);
+
+            const collectParams = {
+                tokenId: position.tokenId,
+                recipient: address,
+                amount0Max: MAX_UINT128,
+                amount1Max: MAX_UINT128
+            };
+
+            console.log("Collecting fees with params:", collectParams);
+            setPositions(positions.map(p =>
+                p.tokenId === position.tokenId ? { ...p, collectMessage: 'Please confirm in wallet...' } : p
+            ));
+
+            const tx = await positionManager.collect(collectParams);
+
+            setPositions(positions.map(p =>
+                p.tokenId === position.tokenId ? {
+                    ...p,
+                    collectMessage: 'Transaction pending...',
+                    txHash: tx.hash
+                } : p
+            ));
+
+            console.log("Collect tx sent:", tx.hash);
+            const receipt = await tx.wait();
+            console.log("Collect tx confirmed:", receipt);
+
+            const feesResult = await LiquidityService.getUnclaimedFees(
+                provider,
+                position.tokenId,
+                address
+            );
+
+            setPositions(positions.map(p =>
+                p.tokenId === position.tokenId ? {
+                    ...p,
+                    isCollecting: false,
+                    collectMessage: 'Fees Collected!',
+                    unclaimedFees: (feesResult.success && feesResult.fees) ? {
+                        amount0: BigInt(feesResult.fees.amount0),
+                        amount1: BigInt(feesResult.fees.amount1)
+                    } : p.unclaimedFees,
+                    txHash: tx.hash
+                } : p
+            ));
+
+        } catch (error: any) {
+            console.error('Error collecting fees:', error);
+            let errorMessage = 'Failed to collect fees';
+            if (error.reason) {
+                errorMessage = error.reason;
+            } else if (error.message) {
+                errorMessage = error.message;
+            }
+            setPositions(positions.map(p =>
+                p.tokenId === position.tokenId ? {
+                    ...p,
+                    isCollecting: false,
+                    collectMessage: undefined,
+                    error: errorMessage
+                } : p
+            ));
+        }
+    };
+
+    // Helper to format price values adaptively (Re-added)
+    const formatPriceValue = (price: number): string => {
+        if (!isFinite(price) || price > 1e18) {
+            return "∞";
+        } else if (price < 1e-9 && price > 0) {
+            return "< 0.00001";
+        } else if (price === 0) {
+            return "0";
+        } else {
+            return price.toLocaleString(undefined, { maximumSignificantDigits: 5 });
+        }
+    };
+
+    // Format price range using helper (Re-added)
+    const formatPriceRange = (position: Position) => {
+        try {
+            const minPriceValue = tickToPrice(position.tickLower);
+            const maxPriceValue = tickToPrice(position.tickUpper);
+            const formattedMin = formatPriceValue(minPriceValue);
+            const formattedMax = formatPriceValue(maxPriceValue);
+            return `${formattedMin} - ${formattedMax} ${position.token1.symbol} per ${position.token0.symbol}`;
+        } catch (e) {
+            console.error("Error formatting price range:", e);
+            return "Error";
+        }
+    };
+
+    // Format unclaimed fees using bigint (Re-added)
+    const formatUnclaimedFees = (position: Position) => {
+        if (position.isCollecting && position.collectMessage) return position.collectMessage;
+        if (position.error) return <span className="text-red-500">{position.error}</span>;
+        if (!position.unclaimedFees) return 'Loading...';
+
+        try {
+            const amount0 = ethers.formatUnits(position.unclaimedFees.amount0, position.token0.decimals);
+            const amount1 = ethers.formatUnits(position.unclaimedFees.amount1, position.token1.decimals);
+            const displayAmount0 = parseFloat(amount0) < 0.000001 ? '< 0.000001' : parseFloat(amount0).toFixed(6);
+            const displayAmount1 = parseFloat(amount1) < 0.000001 ? '< 0.000001' : parseFloat(amount1).toFixed(6);
+            return `${displayAmount0} ${position.token0.symbol} + ${displayAmount1} ${position.token1.symbol}`;
+        } catch (e) {
+            console.error("Error formatting fees: ", e);
+            return "Error";
+        }
+    };
+
     return (
         <div className="w-full max-w-7xl mx-auto p-4 space-y-6 min-h-screen mt-12">
             <div className="grid grid-cols-2 gap-4">
@@ -89,6 +436,7 @@ const PoolsPage = () => {
                     <div className="flex bg-[#1f2639] rounded-lg overflow-hidden">
                         <button 
                             className={`px-6 py-2 ${activeTab === 'pools' ? 'bg-blue-500 text-white hover:cursor-pointer'  : 'hover:cursor-pointer text-gray-400 hover:text-white'} font-medium transition-colors`}
+                            disabled={true}
                             onClick={() => setActiveTab('pools')}
                         >
                             Pools
@@ -222,54 +570,89 @@ const PoolsPage = () => {
                     <table className="w-full">
                         <thead>
                             <tr className="text-gray-400 text-sm border-b border-[#21273a]">
-                                <th className="text-left py-4 px-4">Pools</th>
-                                <th className="text-right px-4">Liquidity</th>
-                                <th className="text-right px-4">Volume (24H)</th>
-                                <th className="text-right px-4">Fees (24H)</th>
-                                <th className="text-center px-4">Fee earned</th>
-                                <th className="text-right px-4">Clear Position</th>
-                                <th className="text-right px-4">Actions</th>
+                                <th className="text-left py-4 px-4">My Positions</th>
+                                <th className="text-right px-4">Range Status</th>
+                                <th className="text-right px-4">Price Range</th>
+                                <th className="text-right px-4">Fee earned</th>
+                                <th className="text-center px-4">Clear Position</th>
+                                <th className="text-center px-4">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {pools.map((pool, index) => (
-                                <tr key={index} className="border-b border-[#21273a] hover:bg-[#2c3552] transition-colors">
-                                    <td className="py-4 px-4">
-                                        <div className="flex items-center space-x-2">
-                                            <div className="flex -space-x-2">
-                                                <img src={"/vercel.svg"} alt={pool.token1.symbol} className="w-6 h-6 rounded-full ring-2 ring-[#1f2639]" />
-                                                <img src={"/vercel.svg"} alt={pool.token2.symbol} className="w-6 h-6 rounded-full ring-2 ring-[#1f2639]" />
-                                            </div>
-                                            <span className="text-white">{pool.token1.symbol} - {pool.token2.symbol}</span>
-                                            <span className="text-gray-400 text-sm">{pool.fee}</span>
+                            {loadingPositions ? (
+                                <tr>
+                                    <td colSpan={6} className="text-center py-8 text-gray-400">
+                                        <div className="flex justify-center items-center space-x-2">
+                                            <Loader2 className="h-5 w-5 animate-spin" />
+                                            <span>Loading positions...</span>
                                         </div>
-                                    </td>
-                                    <td className="text-right px-4 text-white">{pool.liquidity}</td>
-                                    <td className="text-right px-4 text-white">{pool.volume24h}</td>
-                                    <td className="text-right px-4 text-white">{pool.fees24h}</td>
-                                    <td className="text-center px-4">
-                                        <div className="flex items-center justify-center space-x-1">
-                                            {pool.rewards.map((reward, i) => (
-                                                <div key={i} className="flex items-center space-x-1">
-                                                    <span className="text-white text-xs">100</span>
-                                                    <span className="px-2 py-0.5 bg-blue-900/20 text-blue-500 rounded text-xs">
-                                                        {reward}
-                                                    </span>
-                                                    {i < pool.rewards.length - 1 && <span className="text-gray-400">+</span>}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </td>
-                                    <td className="text-right px-4"> <button className="bg-red-900/50 text-red-400 px-4 py-1 rounded-xl text-sm font-medium hover:bg-red-800/50 transition-colors hover:cursor-pointer">
-                                            Remove
-                                        </button></td>
-                                    <td className="text-right px-4">
-                                        <button className="bg-blue-900 text-blue-500 px-4 py-1 rounded-xl text-sm font-medium hover:bg-blue-800 transition-colors hover:cursor-pointer">
-                                            Claim
-                                        </button>
                                     </td>
                                 </tr>
-                            ))}
+                            ) : !isConnected ? (
+                                <tr>
+                                    <td colSpan={6} className="text-center py-8 text-gray-400">Please connect your wallet to view positions.</td>
+                                </tr>
+                            ) : positions.length === 0 ? (
+                                <tr>
+                                    <td colSpan={6} className="text-center py-8 text-gray-400">No positions found.</td>
+                                </tr>
+                            ) : (
+                                positions
+                                    .filter(pos => {
+                                        if (!searchQuery) return true;
+                                        const queryLower = searchQuery.toLowerCase();
+                                        return pos.token0.symbol.toLowerCase().includes(queryLower) ||
+                                               pos.token1.symbol.toLowerCase().includes(queryLower) ||
+                                               pos.token0.address.toLowerCase() === queryLower ||
+                                               pos.token1.address.toLowerCase() === queryLower;
+                                    })
+                                    .map((position) => (
+                                        <tr key={position.tokenId} className="border-b border-[#21273a] hover:bg-[#2c3552] transition-colors">
+                                            <td className="py-4 px-4">
+                                                <div className="flex items-center space-x-2">
+                                                    <div className="flex -space-x-2">
+                                                        <img src={"/token.png"} alt={position.token0.symbol} className="w-6 h-6 rounded-full ring-2 ring-[#1f2639] bg-white" />
+                                                        <img src={"/token.png"} alt={position.token1.symbol} className="w-6 h-6 rounded-full ring-2 ring-[#1f2639] bg-white" />
+                                                    </div>
+                                                    <span className="text-white font-medium">{position.token0.symbol} / {position.token1.symbol}</span>
+                                                    <span className="text-gray-400 text-sm bg-[#2c3552] px-2 py-0.5 rounded">{position.fee / 10000}%</span>
+                                                </div>
+                                            </td>
+                                            <td className="text-right px-4">
+                                                <span className={`px-2 py-1 rounded text-xs font-medium ${position.inRange ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'}`}>
+                                                    {position.inRange ? 'In Range' : 'Out of Range'}
+                                                </span>
+                                            </td>
+                                            <td className="text-right px-4 text-white text-sm">
+                                                {formatPriceRange(position)}
+                                            </td>
+                                            <td className="text-right px-4 text-white text-sm">
+                                                {formatUnclaimedFees(position)}
+                                                {position.txHash && (
+                                                    <a href={`https://sepolia.etherscan.io/tx/${position.txHash}`} target="_blank" rel="noopener noreferrer" className="text-blue-500 text-xs ml-1 hover:underline">(view tx)</a>
+                                                )}
+                                            </td>
+                                            <td className="text-center px-4">
+                                                <button
+                                                    onClick={() => handleRemoveLiquidity(position.tokenId)}
+                                                    disabled={position.isLoading || position.liquidity === BigInt(0)}
+                                                    className={`bg-red-900 text-red-500 px-3 py-1 rounded-xl text-sm font-medium transition-colors hover:cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${position.isLoading ? 'animate-pulse' : 'hover:bg-red-800'}`}
+                                                >
+                                                    {position.isLoading ? <Loader2 className="h-4 w-4 animate-spin inline-block"/> : 'Remove'}
+                                                </button>
+                                            </td>
+                                            <td className="text-center px-4">
+                                                <button
+                                                    onClick={() => handleCollectFees(position)}
+                                                    disabled={position.isCollecting || !!position.error || !position.unclaimedFees || (position.unclaimedFees.amount0 === BigInt(0) && position.unclaimedFees.amount1 === BigInt(0))}
+                                                    className={`bg-blue-900 text-blue-500 px-3 py-1 rounded-xl text-sm font-medium transition-colors hover:cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${position.isCollecting ? 'animate-pulse' : 'hover:bg-blue-800'}`}
+                                                >
+                                                    {position.isCollecting ? <Loader2 className="h-4 w-4 animate-spin inline-block"/> : 'Claim'}
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))
+                            )}
                         </tbody>
                     </table>
                 </div>
