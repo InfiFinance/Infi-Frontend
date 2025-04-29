@@ -14,7 +14,7 @@ import TokenSelectionModal from '@/components/TokenSelectionModal';
 import { useReadContract } from "wagmi";
 import { useAppKitAccount, useAppKitProvider } from '@reown/appkit/react';
 import { BrowserProvider, Contract, Eip1193Provider, ethers, formatUnits } from "ethers";
-
+// todo: swap - balance
 interface SwapProps {
   address?: string;
   isConnected: boolean;
