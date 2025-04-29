@@ -55,39 +55,53 @@ export const  DEFAULT_TOKEN_LIST = {
   tokens: [
     {
       chainId: 50002,
-      address: "0x04fe091c78100eb1Fb6d5b94277De88F76EE21d4",
-      name: "Rambo",
-      symbol: "RAMB",
+      address: "0x4fA011420cB227022431255b90acC8E886F19a37",
+      name: "DEVNET",
+      symbol: "DEVNET",
       decimals: 18
     },
     {
       chainId: 50002,
-      address: "0x39645603a6cD436e273bbd5e3AD001820e7be279",
-      name: "Bobafet",
-      symbol: "BOBA",
+      address: "0xE5C1b4cfF0c18aeB92D54148c1F70802F466d93E",
+      name: "GOCTO",
+      symbol: "GOCTO",
       decimals: 18
     },
     {
       chainId: 50002,
-      address: "0xF526Abb89db0fFE7176db531417ff9108Ef3Ed99",
-      name: "Dawg",
-      symbol: "DAWG",
+      address: "0x6e063A0F514c304ca76Efc6a606bDd64f94CcC9C",
+      name: "INFI",
+      symbol: "INFI",
       decimals: 18
     },
     {
       chainId: 50002,
-      address: "0xAaCc2185ff895E95B9B17B0809f7Febd99394501",
-      name: "Octopus",
+      address: "0xA0675f36409b4512a43E0978A3E4140DEE682b08",
+      name: "OCTOPUS",
       symbol: "OCTO",
       decimals: 18
     },  
     {
       chainId: 50002,
-      address: "0xec5939822a1D9a9E0E089Fe9eBCb75A5F29D23d2",
-      name: "Teammate",
-      symbol: "TEAM",
+      address: "0x581F6A4EF0462C9E71a4180fa1C586E59466850D",
+      name: "PHAROS",
+      symbol: "PHAROS",
       decimals: 18
-    }
+    },
+    {
+      chainId: 50002,
+      address: "0xe76Fc20065d6aC7c0534C3FC9d59fc3Fe8a3850B",
+      name: "PIKACHU",
+      symbol: "PIKA",
+      decimals: 18
+    },
+    {
+      chainId: 50002,
+      address: "0xBEC3f434B4Ed5f50b6eD2aB0d9Fd4DCA2563069F",
+      name: "USDC",
+      symbol: "USDC",
+      decimals: 18
+    },
   ]
 };
 
