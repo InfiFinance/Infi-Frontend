@@ -450,13 +450,13 @@ const PoolsPage = () => {
                     </div>
                 </div>
                 <div className="flex items-center space-x-3">
-                    <Link href='/pools/add' className='link'>
+                    <Link href='/add-liquidity' className='link'>
                         <button className="bg-blue-900 text-blue-500 px-4 py-2 rounded-xl font-medium hover:bg-blue-800 transition-colors flex items-center gap-2 hover:cursor-pointer">
                             Add Liquidity
                             <Plus size={16} />
                         </button>
                     </Link>
-                    <Link href='/pools/create' className='link'>
+                    <Link href='/create-pool' className='link'>
                         <button className="bg-blue-900 text-blue-500 px-4 py-2 rounded-xl font-medium hover:bg-blue-800 transition-colors flex items-center gap-2 hover:cursor-pointer">
                             Create new pool
                             <Plus size={16} />
