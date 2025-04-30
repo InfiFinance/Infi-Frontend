@@ -29,6 +29,7 @@ export default function Swap() {
   const [tokenTwo, setTokenTwo] = useState<TokenInfo>(DEFAULT_TOKEN_LIST.tokens[1]);
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [changeToken, setChangeToken] = useState<number>(1);
+  const [routePath, setRoutePath] = useState<string[]>([]);
   const [txDetails, setTxDetails] = useState<TxDetails>({
     to: null,
     data: null,
@@ -41,7 +42,7 @@ export default function Swap() {
 
   const [isQuerying, setIsQuerying] = useState(false); // Optional: for loading indicator
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Ref to store timeout ID
-
+  const [estimatedGasFee, setEstimatedGasFee] = useState<string>('...');
   useEffect(() => {
     // Only create the BrowserProvider if walletProvider is available
     if (walletProvider) {
@@ -61,7 +62,29 @@ export default function Swap() {
     }
     // Re-run this effect if the walletProvider changes (e.g., user connects/disconnects)
   }, [walletProvider]);
-
+useEffect(() => {
+          console.log("test1");
+          const updateGasEstimate = async () => {
+            if (!ethersProvider) return;
+            try {
+              console.log("test2");
+              const feeData = await ethersProvider.getFeeData();
+              const baseGasPrice = feeData.gasPrice;
+              if (baseGasPrice) {
+                // Estimate gas usage for swap (typical gas limit)
+                const estimatedGasLimit = 250000;
+                console.log("test1");
+                const gasCostWei = baseGasPrice * BigInt(estimatedGasLimit);
+                const gasCostEth = ethers.formatEther(gasCostWei);
+                setEstimatedGasFee(parseFloat(gasCostEth).toFixed(6));
+              }
+            } catch (error) {
+              console.error('Error estimating gas:', error);
+              setEstimatedGasFee('...');
+            }
+          };
+          updateGasEstimate();
+        }, []);
   const InfiRouter = new Contract(
     infiRouterAddress, 
     infiRouterAbi, 
@@ -88,6 +111,7 @@ export default function Swap() {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const currentInputStr = e.target.value;
     setTokenOneAmount(currentInputStr); // Update input immediately
+    setRoutePath([]); // Reset route path when input changes
 
     // Clear previous debounce timer
     if (debounceTimeoutRef.current) {
@@ -124,15 +148,11 @@ export default function Swap() {
             estimatedOutputWei,
             tokenTwo.decimals
           );
-          // -- Simple Multiplication (See previous caveat about precision) --
-          // This part assumes the rate is somewhat constant for different inputs
-          // A better approach might involve BigInt division if you have the input Wei used for the query
-          // For display, simple ratio might be okay.
-          // Let's just display the direct query result for the debounced input for accuracy:
-           setTokenTwoAmount(parseFloat(estimatedOutputFormatted).toFixed(6)); // Show more precision
-           // setTokenTwoAmount(calculatedAmountNumber.toFixed(2)); // Previous calculation
+          setTokenTwoAmount(parseFloat(estimatedOutputFormatted).toFixed(6));
+          setRoutePath(res.path || []); // Store the route path
         } else {
           setTokenTwoAmount("0.00"); // Handle no result
+          setRoutePath([]); // Clear route path if no result
         }
       } catch (err: any) {
          console.error("Error during debounced query:", err);
@@ -161,6 +181,7 @@ export default function Swap() {
   const switchTokens = () => {
     setTokenOneAmount('0');
     setTokenTwoAmount('0');
+    setRoutePath([]); // Clear route path when switching tokens
     const tempToken = tokenOne;
     setTokenOne(tokenTwo);
     setTokenTwo(tempToken);
@@ -174,6 +195,7 @@ export default function Swap() {
   const modifyToken = (token: TokenInfo) => {
     setTokenOneAmount('0');
     setTokenTwoAmount('0');
+    setRoutePath([]); // Clear route path when modifying tokens
 
     if (changeToken === 1) {
        if(token.address === tokenTwo.address) {
@@ -192,7 +214,32 @@ export default function Swap() {
     }
     setIsOpen(false);
   };
+  useEffect(() => {
 
+    const updateGasEstimate = async () => {
+      if (!ethersProvider) return;
+      try {
+      
+        const feeData = await ethersProvider.getFeeData();
+        const baseGasPrice = feeData.gasPrice;
+        console.log("basegas", baseGasPrice)
+        if (baseGasPrice) {
+          // Estimate gas usage for swap (typical gas limit)
+          const estimatedGasLimit = 440000;
+    
+          const gasCostWei = baseGasPrice * BigInt(estimatedGasLimit);
+          console.log("gasfeeWei", gasCostWei)
+          const gasCostEth = ethers.formatEther(gasCostWei);
+          console.log("gasfeeeth", gasCostEth)
+          setEstimatedGasFee(parseFloat(gasCostEth).toFixed(6));
+        }
+      } catch (error) {
+        console.error('Error estimating gas:', error);
+        setEstimatedGasFee('...');
+      }
+    };
+    updateGasEstimate();
+  }, [ethersProvider]);
 
   const fetchDex = async () => {
     try {
@@ -250,6 +297,9 @@ export default function Swap() {
       // --- START GAS PRICE CALCULATION ---
       let txOptions: { gasPrice?: bigint, gasLimit?: number } = {}; // Initialize empty overrides
       try {
+        
+
+        
         const feeData = await ethersProvider.getFeeData();
         const baseGasPrice = feeData.gasPrice;
 
@@ -373,6 +423,7 @@ export default function Swap() {
   const [transactionMode, setTransactionMode] = useState<string>('default');
   const [customSlippage, setCustomSlippage] = useState<string>('');
   const [mevProtection, setMevProtection] = useState<boolean>(false);
+  const [isDetailsOpen, setIsDetailsOpen] = useState<boolean>(false);
   const settingsContent = (
     <div className="bg-[#1f2639] rounded-lg p-6 border border-[#21273a] w-[400px]">
       <div className="flex justify-between items-center mb-6">
@@ -519,8 +570,7 @@ export default function Swap() {
             disabled={true}
             className="bg-transparent border border-gray-700 rounded-xl p-4"
           />
-
-          <button
+                    <button
             className="switchButton"
             onClick={switchTokens}
           >
@@ -543,6 +593,61 @@ export default function Swap() {
             <span>{tokenTwo.symbol}</span>
           </button>
         </div>
+
+        {/* Transaction Details Dropdown */}
+        {tokenOneAmount && tokenTwoAmount && tokenTwoAmount !== "0.00" && tokenOneAmount && tokenTwoAmount && tokenTwoAmount !== "0" && (
+          <div className="bg-[#1f2639] rounded-lg p-4 space-y-3">
+            <div className="flex justify-between items-center cursor-pointer" onClick={() => setIsDetailsOpen(!isDetailsOpen)}>
+              <span className="text-sm text-gray-400 "> <span className="text-sm text-gray-400">Rate: </span>{`1 ${tokenOne.symbol} = ${(parseFloat(tokenTwoAmount) / parseFloat(tokenOneAmount)).toFixed(6)} ${tokenTwo.symbol}`}</span>
+              <svg
+                className={`w-4 h-4 text-gray-400  transition-transform ${isDetailsOpen ? 'rotate-180' : ''}` }
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+            
+            {isDetailsOpen && (
+              <div className="space-y-2">
+                {/* <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-400">Rate</span>
+                  <span className="text-sm text-white">{`1 ${tokenOne.symbol} = ${(parseFloat(tokenTwoAmount) / parseFloat(tokenOneAmount)).toFixed(6)} ${tokenTwo.symbol}`}</span>
+                </div> */}
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-400">Network Fee (est.)</span>
+                  <span className="text-sm text-white">~ {estimatedGasFee} ETH</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-400">Slippage</span>
+                  <span className="text-sm text-white">{slippage}%</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-400">Route</span>
+                  <span className="text-sm text-white">
+                    {/* Replace the queryRes?.path check with routePath */}
+                    {routePath.length > 0 ? (
+                      routePath.map((token, index) => (
+                        <span key={token}>
+                          {index > 0 && " → "}
+                          {DEFAULT_TOKEN_LIST.tokens.find(t => t.address.toLowerCase() === token.toLowerCase())?.symbol || token.slice(0, 6) + '...'}
+                        </span>
+                      ))
+                    ) : (
+                      `${tokenOne.symbol} → ${tokenTwo.symbol}`
+                    )}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-400">Router</span>
+                  <span className="text-sm text-white">Infi Router</span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         <button
           className={`w-full py-4 rounded-xl font-bold text-lg transition-colors ${!tokenOneAmount || !isConnected
