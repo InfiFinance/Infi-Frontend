@@ -15,9 +15,10 @@ import {
     ERC20_ABI, 
     POSITION_MANAGER_ABI, 
     FACTORY_ABI,
-    decodeSqrtPriceX96
+    decodeSqrtPriceX96,
+    getGasOptions
 } from '@/utils/contracts';
-import { LiquidityService } from '@/utils/liquidityService';
+import { LiquidityService, processTickRange } from '@/utils/liquidityService';
 
 const MIN_TICK = -887272;
 const MAX_TICK = 887272;
@@ -39,6 +40,8 @@ const AddLiquidity = () => {
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [currentSqrtPriceX96, setCurrentSqrtPriceX96] = useState<bigint | null>(null);
   const [poolTickSpacing, setPoolTickSpacing] = useState<number | null>(null);
+  const [baseRatioPercent, setBaseRatioPercent] = useState<number | null>(null);
+  const [quoteRatioPercent, setQuoteRatioPercent] = useState<number | null>(null);
 
   const [messageApi, contextHolder] = message.useMessage();
   const { address, isConnected } = useAppKitAccount();
@@ -123,6 +126,39 @@ const AddLiquidity = () => {
     fetchPoolData();
     return () => { if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current); };
   }, [fetchPoolData]);
+
+  // useEffect to calculate deposit ratio based on current pool price
+  useEffect(() => {
+    if (currentSqrtPriceX96 !== null && selectedBaseToken && selectedQuoteToken) {
+        try {
+            const [token0Address] = sortTokens(selectedBaseToken.address, selectedQuoteToken.address);
+            let currentPrice = decodeSqrtPriceX96(currentSqrtPriceX96);
+            // Adjust price based on which token is token0 for the UI display
+            if (selectedBaseToken.address.toLowerCase() !== token0Address.toLowerCase()) {
+                if (currentPrice !== 0) { // Avoid division by zero
+                  currentPrice = 1 / currentPrice;
+                }
+            }
+
+            if (!isNaN(currentPrice) && currentPrice > 0) {
+                const basePercent = (1 / (1 + currentPrice)) * 100;
+                const quotePercent = (currentPrice / (1 + currentPrice)) * 100;
+                setBaseRatioPercent(basePercent);
+                setQuoteRatioPercent(quotePercent);
+            } else {
+                setBaseRatioPercent(null); // Invalid price
+                setQuoteRatioPercent(null);
+            }
+        } catch (error) {
+            console.error("Error calculating ratio from sqrtPrice:", error);
+            setBaseRatioPercent(null); // Error calculating
+            setQuoteRatioPercent(null);
+        }
+    } else {
+        setBaseRatioPercent(null); // Reset if inputs are missing
+        setQuoteRatioPercent(null);
+    }
+}, [currentSqrtPriceX96, selectedBaseToken, selectedQuoteToken]);
 
   const handleContinue = async () => {
     if (!isConnected || !ethersProvider) {
@@ -548,11 +584,11 @@ const AddLiquidity = () => {
                   <div className="flex items-center space-x-2 text-white">
                     <div className="flex items-center">
                       <img src={selectedBaseToken?.logoURI || "/token.png"} alt={selectedBaseToken?.symbol} className="w-4 h-4 rounded-full mr-1" />
-                      <span>{selectedBaseToken?.symbol} 50%</span>
+                      <span>{selectedBaseToken?.symbol} {baseRatioPercent !== null ? `${baseRatioPercent.toFixed(1)}%` : '--%'}</span>
                     </div>
                     <div className="flex items-center">
                       <img src={selectedQuoteToken?.logoURI || "/token.png"} alt={selectedQuoteToken?.symbol} className="w-4 h-4 rounded-full mr-1" />
-                      <span>{selectedQuoteToken?.symbol} 50%</span>
+                      <span>{selectedQuoteToken?.symbol} {quoteRatioPercent !== null ? `${quoteRatioPercent.toFixed(1)}%` : '--%'}</span>
                     </div>
                   </div>
                 </div>

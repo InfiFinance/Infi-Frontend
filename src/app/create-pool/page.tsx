@@ -48,6 +48,8 @@ const CreatePool = () => {
   const [changeToken, setChangeToken] = useState<number>(1);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [poolExistsStatus, setPoolExistsStatus] = useState<'idle' | 'checking' | 'exists' | 'not_found'>('idle');
+  const [baseRatioPercent, setBaseRatioPercent] = useState<number | null>(null);
+  const [quoteRatioPercent, setQuoteRatioPercent] = useState<number | null>(null);
 
   const [messageApi, contextHolder] = message.useMessage();
   const { address, isConnected } = useAppKitAccount();
@@ -115,6 +117,29 @@ const CreatePool = () => {
         }
       };
   }, [checkPoolExists]);
+
+  useEffect(() => {
+    if (initialPrice && selectedBaseToken && selectedQuoteToken) {
+        try {
+            const priceNum = parseFloat(initialPrice);
+            if (!isNaN(priceNum) && priceNum > 0) {
+                const basePercent = (1 / (1 + priceNum)) * 100;
+                const quotePercent = (priceNum / (1 + priceNum)) * 100;
+                setBaseRatioPercent(basePercent);
+                setQuoteRatioPercent(quotePercent);
+            } else {
+                 setBaseRatioPercent(null);
+                 setQuoteRatioPercent(null);
+            }
+        } catch {
+             setBaseRatioPercent(null);
+             setQuoteRatioPercent(null);
+        }
+    } else {
+        setBaseRatioPercent(null);
+        setQuoteRatioPercent(null);
+    }
+}, [initialPrice, selectedBaseToken, selectedQuoteToken]);
 
   const handleContinue = async () => {
     if (!isConnected || !ethersProvider) {
@@ -628,11 +653,11 @@ const CreatePool = () => {
                 <div className="flex items-center space-x-2 text-white">
                   <div className="flex items-center">
                     <img src={selectedBaseToken?.logoURI || "/token.png"} alt={selectedBaseToken?.symbol || "Base"} className="w-4 h-4 rounded-full mr-1" />
-                    <span>{selectedBaseToken?.symbol || 'BASE'} 50%</span>
+                    <span>{selectedBaseToken?.symbol || 'BASE'} {baseRatioPercent !== null ? `${baseRatioPercent.toFixed(1)}%` : '--%'}</span>
                   </div>
                   <div className="flex items-center">
                     <img src={selectedQuoteToken?.logoURI || "/token.png"} alt={selectedQuoteToken?.symbol || "Quote"} className="w-4 h-4 rounded-full mr-1" />
-                    <span>{selectedQuoteToken?.symbol || 'QUOTE'} 50%</span>
+                    <span>{selectedQuoteToken?.symbol || 'QUOTE'} {quoteRatioPercent !== null ? `${quoteRatioPercent.toFixed(1)}%` : '--%'}</span>
                   </div>
                 </div>
               </div>
