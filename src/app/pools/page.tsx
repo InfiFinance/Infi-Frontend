@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import Link from 'next/link'
 import { Search, Plus, Loader2 } from "lucide-react";
+import { useRouter } from 'next/navigation';
 // import { Button } from "../ui/button";
 // import suiIcon from "../../assets/sui.png";
 // import usdcIcon from "../../assets/usdc.svg";
@@ -58,12 +59,13 @@ interface RawPositionData {
 }
 
 const PoolsPage = () => {
+    const router = useRouter();
     //   const navigate = useNavigate();
     const [searchQuery, setSearchQuery] = useState("");
     const [showWatchlist, setShowWatchlist] = useState(false);
     const [showIncentivized, setShowIncentivized] = useState(false);
     const [showAllPools, setShowAllPools] = useState(false);
-    const [activeTab, setActiveTab] = useState('positions');
+    const [activeTab, setActiveTab] = useState('pools');
 
     // State for positions tab
     const [positions, setPositions] = useState<Position[]>([]);
@@ -83,57 +85,73 @@ const PoolsPage = () => {
         }
     }, [walletProvider]);
 
-    // Dummy data for pools
+    // Pools derived from DEFAULT_TOKEN_LIST
     const pools = [
         {
-            token1: { symbol: "SUI", icon: Logo },
-            token2: { symbol: "USDC", icon: Logo },
-            fee: "0.25%",
-            liquidity: "$21,168,128.11",
-            volume24h: "$38,452,728.49",
-            fees24h: "$96,131.82",
-            rewards: ["CETUS", "SUI"],
-            apr: "175.44%"
+            // DEVNET / USDC
+            token1: { symbol: "DEVNET", icon: "/token.png" }, // Placeholder icon
+            token2: { symbol: "USDC", icon: "/token.png" },   // Placeholder icon
+            fee: "0.3%", // Example fee tier
+            liquidity: "$...", // Placeholder - should be fetched dynamically
+            volume24h: "$...", // Placeholder
+            fees24h: "$...", // Placeholder
+            rewards: [], // Placeholder or fetch dynamically
+            apr: "..." // Placeholder or fetch dynamically
         },
         {
-            token1: { symbol: "WAL", icon: Logo },
-            token2: { symbol: "SUI", icon: Logo },
-            fee: "0.25%",
-            liquidity: "$6,317,011.56",
-            volume24h: "$29,346,114.31",
-            fees24h: "$73,365.28",
-            rewards: ["SUI", "WAL"],
-            apr: "628.7%"
-        },
-        {
-            token1: { symbol: "suiUSDT", icon: Logo },
-            token2: { symbol: "USDC", icon: Logo },
-            fee: "0.01%",
-            liquidity: "$35,223,855.02",
-            volume24h: "$15,036,404.82",
-            fees24h: "$1,503.64",
-            rewards: ["SUI", "CETUS"],
-            apr: "12.09%"
-        },
-        {
-            token1: { symbol: "haSUI", icon: Logo },
-            token2: { symbol: "USDC", icon: Logo },
-            fee: "0.05%",
-            liquidity: "$1,162,215.71",
-            volume24h: "$10,826,740.12",
-            fees24h: "$5,313.37",
+            // GOCTO / USDC
+            token1: { symbol: "GOCTO", icon: "/token.png" },
+            token2: { symbol: "USDC", icon: "/token.png" },
+            fee: "0.3%",
+            liquidity: "$...",
+            volume24h: "$...",
+            fees24h: "$...",
             rewards: [],
-            apr: "166.59%"
+            apr: "..."
         },
         {
-            token1: { symbol: "haSUI", icon: Logo },
-            token2: { symbol: "SUI", icon: Logo },
-            fee: "0.01%",
-            liquidity: "$28,062,131.5",
-            volume24h: "$8,326,486.81",
-            fees24h: "$832.64",
-            rewards: ["SUI"],
-            apr: "1.11%"
+            // INFI / USDC
+            token1: { symbol: "INFI", icon: "/token.png" },
+            token2: { symbol: "USDC", icon: "/token.png" },
+            fee: "0.3%",
+            liquidity: "$...",
+            volume24h: "$...",
+            fees24h: "$...",
+            rewards: [],
+            apr: "..."
+        },
+        {
+            // OCTO / USDC
+            token1: { symbol: "OCTO", icon: "/token.png" },
+            token2: { symbol: "USDC", icon: "/token.png" },
+            fee: "1%", // Example fee tier
+            liquidity: "$...",
+            volume24h: "$...",
+            fees24h: "$...",
+            rewards: [],
+            apr: "..."
+        },
+        {
+            // PHAROS / USDC
+            token1: { symbol: "PHAROS", icon: "/token.png" },
+            token2: { symbol: "USDC", icon: "/token.png" },
+            fee: "0.05%", // Example fee tier
+            liquidity: "$...",
+            volume24h: "$...",
+            fees24h: "$...",
+            rewards: [],
+            apr: "..."
+        },
+         {
+            // PIKA / USDC
+            token1: { symbol: "PIKA", icon: "/token.png" },
+            token2: { symbol: "USDC", icon: "/token.png" },
+            fee: "0.05%",
+            liquidity: "$...",
+            volume24h: "$...",
+            fees24h: "$...",
+            rewards: [],
+            apr: "..."
         },
     ];
 
@@ -418,6 +436,11 @@ const PoolsPage = () => {
         }
     };
 
+    // Handle deposit click - navigate to add-liquidity with tokens pre-filled
+    const handleDepositClick = (token1Symbol: string, token2Symbol: string) => {
+        router.push(`/add-liquidity?token0=${token1Symbol}&token1=${token2Symbol}`);
+    };
+
     return (
         <div className="w-full max-w-7xl mx-auto p-4 space-y-6 min-h-screen mt-12">
             <div className="grid grid-cols-2 gap-4">
@@ -436,7 +459,7 @@ const PoolsPage = () => {
                     <div className="flex bg-[#1f2639] rounded-lg overflow-hidden">
                         <button 
                             className={`px-6 py-2 ${activeTab === 'pools' ? 'bg-blue-500 text-white hover:cursor-pointer'  : 'hover:cursor-pointer text-gray-400 hover:text-white'} font-medium transition-colors`}
-                            disabled={true}
+                            // disabled={true}
                             onClick={() => setActiveTab('pools')}
                         >
                             Pools
@@ -535,16 +558,16 @@ const PoolsPage = () => {
                                     <td className="py-4 px-4">
                                         <div className="flex items-center space-x-2">
                                             <div className="flex -space-x-2">
-                                                <img src={"/vercel.svg"} alt={pool.token1.symbol} className="w-6 h-6 rounded-full ring-2 ring-[#1f2639]" />
-                                                <img src={"/vercel.svg"} alt={pool.token2.symbol} className="w-6 h-6 rounded-full ring-2 ring-[#1f2639]" />
+                                                <img src={pool.token1.icon} alt={pool.token1.symbol} className="w-6 h-6 rounded-full ring-2 ring-[#1f2639]" />
+                                                <img src={pool.token2.icon} alt={pool.token2.symbol} className="w-6 h-6 rounded-full ring-2 ring-[#1f2639]" />
                                             </div>
                                             <span className="text-white">{pool.token1.symbol} - {pool.token2.symbol}</span>
                                             <span className="text-gray-400 text-sm">{pool.fee}</span>
                                         </div>
                                     </td>
-                                    <td className="text-right px-4 text-white">{pool.liquidity}</td>
-                                    <td className="text-right px-4 text-white">{pool.volume24h}</td>
-                                    <td className="text-right px-4 text-white">{pool.fees24h}</td>
+                                    <td className="text-right px-4 text-white">$1450000</td>
+                                    <td className="text-right px-4 text-white">$12390</td>
+                                    <td className="text-right px-4 text-white">$2356</td>
                                     {/* <td className="text-center px-4">
                                         <div className="flex items-center justify-center space-x-1">
                                             {pool.rewards.map((reward, i) => (
@@ -556,7 +579,10 @@ const PoolsPage = () => {
                                     </td> */}
                                     {/* <td className="text-right px-4 text-blue-500">{pool.apr}</td>  */}
                                     <td className="text-right px-4">
-                                        <button className="bg-blue-900 text-blue-500 px-4 py-1 rounded-xl text-sm font-medium hover:bg-blue-800 transition-colors hover:cursor-pointer">
+                                        <button 
+                                            onClick={() => handleDepositClick(pool.token1.symbol, pool.token2.symbol)}
+                                            className="bg-blue-900 text-blue-500 px-4 py-1 rounded-xl text-sm font-medium hover:bg-blue-800 transition-colors hover:cursor-pointer"
+                                        >
                                             Deposit
                                         </button>
                                     </td>
@@ -662,74 +688,3 @@ const PoolsPage = () => {
 };
 
 export default PoolsPage;
-// export default function Pools() {
-//   return (
-//     <div className="min-h-screen flex justify-center items-start py-12">
-//       <div className="w-full max-w-6xl bg-[#0E111B] border-2 border-[#21273a] rounded-2xl p-6 space-y-4">
-//         <div className="flex justify-between items-center">
-//           <h4 className="text-xl font-bold">Liquidity Pools</h4>
-//         </div>
-
-//         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-//           {/* Pool cards will be added here */}
-//           <div className="bg-[#1f2639] p-4 rounded-xl border border-[#21273a]">
-//             <div className="flex items-center justify-between mb-4">
-//               <div className="flex items-center gap-2">
-//                 <div className="w-8 h-8 bg-blue-500 rounded-full"></div>
-//                 <div className="w-8 h-8 bg-green-500 rounded-full -ml-2"></div>
-//                 <span className="font-medium">ETH/USDC</span>
-//               </div>
-//               <span className="text-sm text-gray-400">APR: 12.5%</span>
-//             </div>
-//             <div className="space-y-2">
-//               <div className="flex justify-between text-sm">
-//                 <span className="text-gray-400">TVL:</span>
-//                 <span>$1,234,567</span>
-//               </div>
-//               <div className="flex justify-between text-sm">
-//                 <span className="text-gray-400">Volume 24h:</span>
-//                 <span>$123,456</span>
-//               </div>
-//               <div className="flex justify-between text-sm">
-//                 <span className="text-gray-400">My Liquidity:</span>
-//                 <span>$0.00</span>
-//               </div>
-//             </div>
-//             <button className="w-full mt-4 py-2 bg-blue-900 text-blue-500 rounded-xl font-medium hover:bg-blue-800 transition-colors">
-//               Add Liquidity
-//             </button>
-//           </div>
-
-//           {/* Example pool card */}
-//           <div className="bg-[#1f2639] p-4 rounded-xl border border-[#21273a]">
-//             <div className="flex items-center justify-between mb-4">
-//               <div className="flex items-center gap-2">
-//                 <div className="w-8 h-8 bg-purple-500 rounded-full"></div>
-//                 <div className="w-8 h-8 bg-yellow-500 rounded-full -ml-2"></div>
-//                 <span className="font-medium">LINK/USDT</span>
-//               </div>
-//               <span className="text-sm text-gray-400">APR: 8.2%</span>
-//             </div>
-//             <div className="space-y-2">
-//               <div className="flex justify-between text-sm">
-//                 <span className="text-gray-400">TVL:</span>
-//                 <span>$987,654</span>
-//               </div>
-//               <div className="flex justify-between text-sm">
-//                 <span className="text-gray-400">Volume 24h:</span>
-//                 <span>$76,543</span>
-//               </div>
-//               <div className="flex justify-between text-sm">
-//                 <span className="text-gray-400">My Liquidity:</span>
-//                 <span>$0.00</span>
-//               </div>
-//             </div>
-//             <button className="w-full mt-4 py-2 bg-blue-900 text-blue-500 rounded-xl font-medium hover:bg-blue-800 transition-colors">
-//               Add Liquidity
-//             </button>
-//           </div>
-//         </div>
-//       </div>
-//     </div>
-//   );
-// }

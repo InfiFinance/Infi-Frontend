@@ -3,8 +3,9 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { Input, message } from 'antd';
 import TokenSelectionModal from '@/components/TokenSelectionModal';
-import { TokenInfo } from '@/services/tokenService';
+import { TokenInfo, DEFAULT_TOKEN_LIST } from '@/services/tokenService';
 import { ChevronDownIcon } from "lucide-react";
+import { useSearchParams } from 'next/navigation';
 import { useAppKitAccount, useAppKitProvider } from '@reown/appkit/react';
 import { BrowserProvider, Contract, Eip1193Provider, ethers } from "ethers";
 import { ADDRESSES } from '@/constants/addresses';
@@ -24,6 +25,7 @@ const MIN_TICK = -887272;
 const MAX_TICK = 887272;
 
 const AddLiquidity = () => {
+  const searchParams = useSearchParams();
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedBaseToken, setSelectedBaseToken] = useState<TokenInfo | null>(null);
   const [selectedQuoteToken, setSelectedQuoteToken] = useState<TokenInfo | null>(null);
@@ -63,6 +65,36 @@ const AddLiquidity = () => {
       setEthersProvider(null);
     }
   }, [walletProvider]);
+
+  // --- Effect to read query params and set initial tokens ---
+  useEffect(() => {
+    const token0Symbol = searchParams.get('token0');
+    const token1Symbol = searchParams.get('token1');
+
+    if (token0Symbol && token1Symbol) {
+      console.log(`[AddLiquidity] Found query params: token0=${token0Symbol}, token1=${token1Symbol}`);
+      const baseToken = DEFAULT_TOKEN_LIST.tokens.find(t => t.symbol.toLowerCase() === token0Symbol.toLowerCase());
+      const quoteToken = DEFAULT_TOKEN_LIST.tokens.find(t => t.symbol.toLowerCase() === token1Symbol.toLowerCase());
+
+      if (baseToken) {
+        console.log("[AddLiquidity] Setting base token from query param:", baseToken.symbol);
+        setSelectedBaseToken(baseToken);
+      } else {
+        console.warn(`[AddLiquidity] Token symbol '${token0Symbol}' from query param not found in default list.`);
+      }
+      
+      if (quoteToken) {
+        console.log("[AddLiquidity] Setting quote token from query param:", quoteToken.symbol);
+        setSelectedQuoteToken(quoteToken);
+      } else {
+        console.warn(`[AddLiquidity] Token symbol '${token1Symbol}' from query param not found in default list.`);
+      }
+    } else {
+      console.log("[AddLiquidity] No token query parameters found.");
+    }
+  // Run only once on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps 
+  }, []); 
 
   // --- Fetch Pool Address & Price Logic --- 
   const fetchPoolData = useCallback(async () => {
