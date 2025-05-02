@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
-// It's highly recommended to move this to environment variables (.env.local)
-const TARGET_RPC_URL = process.env.READ_ONLY_RPC_URL || 'https://devnet.dplabs-internal.com';
+// Use a server-side variable (not NEXT_PUBLIC_) for the actual target
+const TARGET_RPC_URL = process.env.RPC_PROXY_TARGET_URL || 'https://devnet.dplabs-internal.com';
 
 export async function POST(request: NextRequest) {
   try {

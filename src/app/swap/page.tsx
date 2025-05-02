@@ -18,7 +18,7 @@ import { BrowserProvider, Contract, Eip1193Provider, ethers, formatUnits, JsonRp
 // Define a read-only RPC endpoint - Pointing to the FULL proxy URL for local dev
 // const READ_ONLY_RPC_URL = 'https://devnet.dplabs-internal.com'; // Old direct URL
 // const READ_ONLY_RPC_URL = '/api/rpc-proxy'; // Old relative path
-const READ_ONLY_RPC_URL = 'http://localhost:3000/api/rpc-proxy'; // Full URL for local development
+const READ_ONLY_RPC_URL = process.env.NEXT_PUBLIC_READ_ONLY_RPC_URL || 'http://localhost:3000/api/rpc-proxy';
 
 // todo: swap - balance
 interface SwapProps {

@@ -33,7 +33,7 @@ const MAX_TICK = 887272;
 // const tokenList: TokenInfo[] = [ ... ];
 
 // Read-only provider setup (using proxy)
-const READ_ONLY_RPC_URL = 'http://localhost:3000/api/rpc-proxy'; // Full URL for local development
+const READ_ONLY_RPC_URL = process.env.NEXT_PUBLIC_READ_ONLY_RPC_URL || 'http://localhost:3000/api/rpc-proxy';
 
 const CreatePool = () => {
   const [currentStep, setCurrentStep] = useState(1);
