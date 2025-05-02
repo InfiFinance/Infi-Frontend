@@ -11,7 +11,7 @@ import { TokenInfo, DEFAULT_TOKEN_LIST } from '@/services/tokenService';
 import { ChevronDownIcon } from "lucide-react";
 import { ethers } from "ethers";
 import { useAppKitAccount, useAppKitProvider } from '@reown/appkit/react'; 
-import { BrowserProvider, Contract, Eip1193Provider } from "ethers";
+import { BrowserProvider, Contract, Eip1193Provider, JsonRpcProvider, Provider } from "ethers";
 import { ADDRESSES } from '@/constants/addresses';
 import { 
     encodeSqrtPriceX96, 
@@ -31,6 +31,9 @@ const MAX_TICK = 887272;
 
 // REMOVE local tokenList
 // const tokenList: TokenInfo[] = [ ... ];
+
+// Read-only provider setup (using proxy)
+const READ_ONLY_RPC_URL = 'http://localhost:3000/api/rpc-proxy'; // Full URL for local development
 
 const CreatePool = () => {
   const [currentStep, setCurrentStep] = useState(1);
@@ -56,6 +59,9 @@ const CreatePool = () => {
   const { walletProvider } = useAppKitProvider("eip155");
   const [ethersProvider, setEthersProvider] = useState<BrowserProvider | null>(null);
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Memoized read-only provider instance
+  const readOnlyProvider = useMemo(() => new JsonRpcProvider(READ_ONLY_RPC_URL), []);
 
   useEffect(() => {
     if (walletProvider) {
@@ -680,6 +686,7 @@ const CreatePool = () => {
         isOpen={isOpen}
         onClose={() => setIsOpen(false)}
         onSelect={modifyToken}
+        readOnlyProvider={readOnlyProvider}
       />
     </div>
   );

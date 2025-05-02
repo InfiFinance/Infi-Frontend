@@ -1,117 +1,60 @@
 import { Modal, Input, Spin, Empty } from 'antd';
-import { useState, useEffect, useMemo } from 'react';
-import { useAccount, usePublicClient } from 'wagmi';
-import { ethers } from 'ethers'; // Re-add ethers import
+import { useState, useEffect } from 'react';
+import { ethers, Provider } from 'ethers'; // Import Provider type
 import { searchTokens, TokenInfo, DEFAULT_TOKEN_LIST } from '../services/tokenService'; // Using Ethers-based service now
 import { useDebounce } from 'use-debounce';
 // import { customNetwork } from '../config'; // No longer needed for manual client
-
-// Helper function to convert Viem PublicClient to Ethers v5/v6 Provider
-function publicClientToProvider(publicClient: any) {
-  if (!publicClient) {
-    return undefined;
-  }
-  
-  try {
-    const { chain, transport } = publicClient; 
-    
-    if (!chain || !transport) {
-        console.error("[publicClientToProvider] Missing chain or transport property.");
-        return undefined;
-    }
-    
-    const network = {
-      chainId: chain.id,
-      name: chain.name,
-      ensAddress: chain.contracts?.ensRegistry?.address,
-    };
-    
-    let targetTransportUrl: string | undefined;
-
-    if (transport.type === 'http' || transport.type === 'webSocket') {
-      targetTransportUrl = (transport as any).url || (transport as any).config?.url;
-
-    } else if (transport.type === 'fallback' && transport.transports) {
-      const httpTransport = transport.transports.find((t: any) => t?.config?.key === 'http'); 
-      
-      if (httpTransport) {
-        targetTransportUrl = httpTransport?.value?.url; 
-      } else {
-        console.warn("[publicClientToProvider] No underlying HTTP transport config found within fallback.");
-      }
-
-    } else {
-      console.error(`[publicClientToProvider] Unsupported transport type: ${transport.type}`);
-      return undefined;
-    }
-
-    if (targetTransportUrl) {
-        return new ethers.JsonRpcProvider(targetTransportUrl, network);
-    } else {
-        console.error("[publicClientToProvider] Could not determine a suitable transport URL.");
-        return undefined;
-    }
-
-  } catch (error) {
-      console.error("[publicClientToProvider] Error during conversion:", error);
-      return undefined;
-  }
-}
 
 interface TokenSelectionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSelect: (token: TokenInfo) => void;
+  readOnlyProvider?: Provider | null; // Add optional read-only provider prop
 }
 
 export default function TokenSelectionModal({
   isOpen,
   onClose,
   onSelect,
+  readOnlyProvider, // Destructure the new prop
 }: TokenSelectionModalProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<TokenInfo[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [debouncedSearchQuery] = useDebounce(searchQuery, 300);
 
-  const { chain, isConnected } = useAccount();
-  const publicClient = usePublicClient({ chainId: chain?.id });
-  const provider = useMemo(() => publicClientToProvider(publicClient), [publicClient]);
+  // Remove reliance on connected account/provider for search
+  // const { chain, isConnected } = useAccount();
+  // const publicClient = usePublicClient({ chainId: chain?.id });
+  // const provider = useMemo(() => publicClientToProvider(publicClient), [publicClient]);
+  const DEFAULT_CHAIN_ID = 50002; // Define default chain ID
 
   useEffect(() => {
-    // Initial checks: modal open, connected, search query exists
-    if (!isOpen || !isConnected || debouncedSearchQuery === '') {
-      setSearchQuery(''); // Clear search if condition not met
+    // Clear search if modal is closed or query is empty
+    if (!isOpen || debouncedSearchQuery === '') {
+      if (debouncedSearchQuery === '') setSearchResults([]); // Clear results only if query is cleared
       setSearchResults([]);
       setIsLoading(false);
       return;
     }
 
-    // Check if essential data (chain, client, converted provider) is ready
-    if (!chain?.id) {
-      console.log("[Search Effect] Waiting for Chain ID...");
-      // Optional: You could set isLoading true here if you want loading state while waiting
-      // setIsLoading(true);
-      return; // Exit effect if no chain ID
-    }
-    if (!publicClient) {
-       console.log("[Search Effect] Waiting for PublicClient...");
-       // setIsLoading(true);
-       return; // Exit effect if no public client
-    }
-    if (!provider) {
-       console.warn("[Search Effect] Waiting for Ethers Provider (conversion result)...");
-        // setIsLoading(true);
-       // This implies publicClientToProvider failed or publicClient wasn't ready
-       return; // Exit effect if provider conversion failed
+    // Always try to use the readOnlyProvider passed via props
+    if (!readOnlyProvider) {
+      console.log("[Search Effect] No suitable provider available.");
+      setIsLoading(false);
+      setSearchResults([]); // Clear results if no provider
+      return; // Exit if no provider is available
     }
 
     // --- If all checks pass, proceed with search --- 
-    console.log("[Search Effect] All checks passed, performing search...");
     const performSearch = async () => {
       setIsLoading(true);
       try {
-        const results = await searchTokens(debouncedSearchQuery, chain.id, provider);
+        // Always use readOnlyProvider and default chain ID
+        // The searchTokens function needs to handle this possibility.
+        console.log(`[Search Effect] Performing search with query: '${debouncedSearchQuery}', chainId: ${DEFAULT_CHAIN_ID}`);
+        // Use default chainId 50002 if activeChainId is undefined
+        const results = await searchTokens(debouncedSearchQuery, DEFAULT_CHAIN_ID, readOnlyProvider);
         setSearchResults(results);
       } catch (error) {
         console.error("Error searching tokens:", error);
@@ -122,17 +65,10 @@ export default function TokenSelectionModal({
     };
 
     // Only perform search if query exists
-    if (debouncedSearchQuery) { 
-      console.log("[Search Effect] Query detected, performing search...");
-      performSearch();
-    } else {
-        // If query is empty, clear search results and loading state
-        setSearchResults([]);
-        setIsLoading(false);
-    }
+    performSearch();
 
     // Dependencies include everything needed for the checks and the search call
-  }, [debouncedSearchQuery, isOpen, isConnected, chain?.id, publicClient, provider]);
+  }, [debouncedSearchQuery, isOpen, readOnlyProvider]);
 
   // Determine which list to display: Search results or the default list
   const displayList: TokenInfo[] = debouncedSearchQuery ? searchResults : DEFAULT_TOKEN_LIST.tokens;

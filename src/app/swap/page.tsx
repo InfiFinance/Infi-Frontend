@@ -6,14 +6,20 @@ const infiRouterAbi = require('../../contract/aggregator/pharos/InfiRouter.json'
 
 //@ts-ignore
 import { ArrowDownOutlined, SettingOutlined } from '@ant-design/icons';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import axios from 'axios';
 import { TokenInfo, DEFAULT_TOKEN_LIST } from '../../services/tokenService';
 import { TxDetails } from '@/types/token';
 import TokenSelectionModal from '@/components/TokenSelectionModal';
 import { useReadContract } from "wagmi";
-import { useAppKitAccount, useAppKitProvider } from '@reown/appkit/react';
-import { BrowserProvider, Contract, Eip1193Provider, ethers, formatUnits } from "ethers";
+import { useAppKitAccount, useAppKitProvider, useAppKit } from '@reown/appkit/react';
+import { BrowserProvider, Contract, Eip1193Provider, ethers, formatUnits, JsonRpcProvider } from "ethers";
+
+// Define a read-only RPC endpoint - Pointing to the FULL proxy URL for local dev
+// const READ_ONLY_RPC_URL = 'https://devnet.dplabs-internal.com'; // Old direct URL
+// const READ_ONLY_RPC_URL = '/api/rpc-proxy'; // Old relative path
+const READ_ONLY_RPC_URL = 'http://localhost:3000/api/rpc-proxy'; // Full URL for local development
+
 // todo: swap - balance
 interface SwapProps {
   address?: string;
@@ -40,7 +46,12 @@ export default function Swap() {
   const [ethersProvider, setEthersProvider] = useState<BrowserProvider | null>(null);
   const { walletProvider } = useAppKitProvider("eip155");
 
+  // Create read-only provider and router instances, memoized to prevent recreation
+  const readOnlyProvider = useMemo(() => new JsonRpcProvider(READ_ONLY_RPC_URL), []);
+  const readOnlyRouter = useMemo(() => new Contract(infiRouterAddress, infiRouterAbi, readOnlyProvider), [readOnlyProvider]);
+
   const [isQuerying, setIsQuerying] = useState(false); // Optional: for loading indicator
+  const [isProcessingSwap, setIsProcessingSwap] = useState(false); // State for swap button disabling
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Ref to store timeout ID
   const [estimatedGasFee, setEstimatedGasFee] = useState<string>('...');
   useEffect(() => {
@@ -85,16 +96,38 @@ useEffect(() => {
           };
           updateGasEstimate();
         }, []);
-  const InfiRouter = new Contract(
-    infiRouterAddress, 
-    infiRouterAbi, 
-    ethersProvider
-)
+
+  // Function to call the findBestPath method on a given router instance
+  async function callFindBestPath(routerInstance: Contract, tknFrom: string, tknTo: string, amountIn: bigint) {
+    const maxHops = 3
+    const gasPrice = ethers.parseUnits('225', 'gwei') // This might not be strictly necessary for read-only queries but kept for consistency
+    return routerInstance.findBestPathWithGas(
+        amountIn,
+        tknFrom,
+        tknTo,
+        maxHops,
+        gasPrice,
+        { gasLimit: 1e9 } // Gas limit might also be less critical for static calls
+    )
+  }
+
+  // --- Wallet-connected Router Instance (Initialized conditionally) ---
+  // We still need the connected router for transactions later
+  const getConnectedRouter = (): Contract | null => {
+    if (!ethersProvider) return null;
+    // We need a signer for transactions, getSigner() is async,
+    // but for now, just passing the provider works for contract setup.
+    // Signer will be obtained inside fetchDex when needed.
+    return new Contract(infiRouterAddress, infiRouterAbi, ethersProvider);
+  }
+  // Note: Direct use of 'InfiRouter' for transactions will be replaced with calls needing a signer inside fetchDex
+
+  const { open } = useAppKit(); // Use 'open' provided by useAppKit
 
   async function query(tknFrom:string, tknTo:string, amountIn:any) {
     const maxHops = 3
     const gasPrice = ethers.parseUnits('225', 'gwei')
-    return InfiRouter.findBestPathWithGas(
+    return readOnlyRouter.findBestPathWithGas(
         amountIn, 
         tknFrom, 
         tknTo, 
@@ -130,17 +163,21 @@ useEffect(() => {
     // Set a new timer
     debounceTimeoutRef.current = setTimeout(async () => {
       try {
+        // Remove the check for ethersProvider as we are using readOnlyProvider for quotes
+        /*
         // Ensure provider is ready
         if (!ethersProvider) {
            console.error("Provider not ready for query");
            setIsQuerying(false);
            return;
         }
+        */
          // Ensure amount is valid BigInt parsable string
          const amountInWei = ethers.parseUnits(currentInputStr, tokenOne.decimals);
 
         console.log(`Debounced query for: ${currentInputStr}`); // Logging
-        const res = await query(tokenOne.address, tokenTwo.address, amountInWei); // Pass BigInt amount
+        // Use the read-only router for querying quotes
+        const res = await callFindBestPath(readOnlyRouter, tokenOne.address, tokenTwo.address, amountInWei);
 
         if (res && res.amounts && res.amounts.length > 0) {
           const estimatedOutputWei = res.amounts[res.amounts.length - 1];
@@ -243,9 +280,10 @@ useEffect(() => {
 
   const fetchDex = async () => {
     try {
+      setIsProcessingSwap(true);
       // Ensure provider and signer are ready
       if (!ethersProvider) {
-        messageApi.error('Wallet provider not available.');
+        messageApi.error('Please connect your wallet to perform a swap.');
         return;
       }
       const signer = await ethersProvider.getSigner();
@@ -264,8 +302,9 @@ useEffect(() => {
        // 1. Parse amountIn to BigInt
        const amountInWei = ethers.parseUnits(tokenOneAmount, tokenOne.decimals);
 
-      // 2. Query the router
-      const queryRes = await query(tokenOne.address, tokenTwo.address, amountInWei);
+      // 2. Query the router using the read-only instance first
+      // const queryRes = await query(tokenOne.address, tokenTwo.address, amountInWei); // Old query
+      const queryRes = await callFindBestPath(readOnlyRouter, tokenOne.address, tokenTwo.address, amountInWei);
       console.log("Query Result:", queryRes);
 
       // Validate query response
@@ -372,8 +411,14 @@ useEffect(() => {
       console.log("Executing swap with args:", tradeArgs);
       messageApi.info('Executing swap. Please confirm in your wallet.');
 
-      // 7. Execute Swap (Pass gas price override)
-      const swapTx = await (InfiRouter.connect(signer) as ethers.Contract).swapNoSplit(
+      // 7. Execute Swap (Use connected router instance with signer)
+      const connectedRouter = getConnectedRouter();
+      if (!connectedRouter) {
+         messageApi.error("Failed to get connected router instance.");
+         return;
+      }
+      // Connect the signer for the transaction
+      const swapTx = await (connectedRouter.connect(signer) as ethers.Contract).swapNoSplit(
         tradeArgs,
         signer.address, // recipient
         fee,
@@ -415,9 +460,18 @@ useEffect(() => {
       messageApi.error({ content: `Swap failed: ${error.reason || error.message || 'Unknown error'}`, key: 'swapStatus', duration: 5 });
        // Reset loading message if swap fails before sending
        messageApi.destroy('swapStatus');
+    } finally {
+       setIsProcessingSwap(false);
     }
   };
 
+  const handleButtonClick = () => {
+    if (!isConnected) {
+       open?.(); // Try using the open function provided by useAppKit
+    } else {
+       fetchDex(); // Otherwise, proceed with the swap
+    }
+  };
 
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [transactionMode, setTransactionMode] = useState<string>('default');
@@ -533,6 +587,7 @@ useEffect(() => {
         isOpen={isOpen}
         onClose={() => setIsOpen(false)}
         onSelect={modifyToken}
+        readOnlyProvider={readOnlyProvider}
       />
 
       <div className="w-full max-w-md bg-[#0E111B] border-2 border-[#21273a] rounded-2xl p-6 space-y-4">
@@ -650,13 +705,18 @@ useEffect(() => {
         )}
 
         <button
-          className={`w-full py-4 rounded-xl font-bold text-lg transition-colors ${!tokenOneAmount || !isConnected
-            ? 'bg-blue-900/40 text-blue-500/60 cursor-not-allowed'
-            : 'bg-blue-900 text-blue-500 hover:bg-blue-800 hover:cursor-pointer'}`}
-          onClick={fetchDex}
-          disabled={!tokenOneAmount || !isConnected}
+           className={`w-full py-4 rounded-xl font-bold text-lg transition-colors ${ // Conditional Styling
+             !isConnected
+               ? 'bg-blue-900 text-blue-500 hover:bg-blue-800 hover:cursor-pointer' // Always active style when not connected
+               : (!tokenOneAmount || isProcessingSwap) // Style when connected
+                 ? 'bg-blue-900/40 text-blue-500/60 cursor-not-allowed' // Disabled style if no amount or processing
+                 : 'bg-blue-900 text-blue-500 hover:bg-blue-800 hover:cursor-pointer' // Active style otherwise
+           }`}
+          onClick={handleButtonClick} // Use the new handler
+          disabled={isProcessingSwap || (isConnected && !tokenOneAmount)} // Updated disabled logic
         >
-          Swap
+           {/* Conditional Text */}
+           {isConnected ? 'Swap' : 'Connect Wallet'}
         </button>
       </div>
       </div>

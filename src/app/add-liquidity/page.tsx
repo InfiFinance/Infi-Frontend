@@ -7,7 +7,7 @@ import { TokenInfo, DEFAULT_TOKEN_LIST } from '@/services/tokenService';
 import { ChevronDownIcon } from "lucide-react";
 import { useSearchParams } from 'next/navigation';
 import { useAppKitAccount, useAppKitProvider } from '@reown/appkit/react';
-import { BrowserProvider, Contract, Eip1193Provider, ethers } from "ethers";
+import { BrowserProvider, Contract, Eip1193Provider, ethers, formatUnits, JsonRpcProvider, Provider } from "ethers";
 import { ADDRESSES } from '@/constants/addresses';
 import { 
     priceToTick, 
@@ -23,6 +23,9 @@ import { LiquidityService, processTickRange } from '@/utils/liquidityService';
 
 const MIN_TICK = -887272;
 const MAX_TICK = 887272;
+
+// Read-only provider setup (using proxy)
+const READ_ONLY_RPC_URL = 'http://localhost:3000/api/rpc-proxy'; // Full URL for local development
 
 const AddLiquidity = () => {
   const searchParams = useSearchParams();
@@ -50,6 +53,9 @@ const AddLiquidity = () => {
   const { walletProvider } = useAppKitProvider("eip155");
   const [ethersProvider, setEthersProvider] = useState<BrowserProvider | null>(null);
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Memoized read-only provider instance
+  const readOnlyProvider = useMemo(() => new JsonRpcProvider(READ_ONLY_RPC_URL), []);
 
   useEffect(() => {
     if (walletProvider) {
@@ -729,6 +735,7 @@ const AddLiquidity = () => {
           isOpen={isOpen}
           onClose={() => setIsOpen(false)}
           onSelect={modifyToken}
+          readOnlyProvider={readOnlyProvider}
        />
     </div>
   );
