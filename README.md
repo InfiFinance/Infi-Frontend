@@ -7,7 +7,7 @@
 infi is the premier DEX aggregator on Pharos Network which is fully on-chain and modular in nature.
 
 *   **Aggregator link : https://github.com/InfiFinance/infi-ag**
-*   **Twitter(X): https://x.com/InfiExchange**
+*   **Twitter (X): https://x.com/InfiExchange**
 
 *   **App link: https://infiexchange.xyz/swap**
 
