@@ -619,12 +619,18 @@ useEffect(() => {
             disabled={false}
             className="bg-transparent border border-gray-700 rounded-xl p-4"
           />
+          <div className="balanceDisplayOne">
+            Balance: 34343556.45466 {/* TODO: Add actual balance here */}
+          </div>
           <Input
             placeholder="0"
             value={tokenTwoAmount}
             disabled={true}
             className="bg-transparent border border-gray-700 rounded-xl p-4"
           />
+          <div className="balanceDisplayTwo">
+            Balance: 34343556.45466 {/* TODO: Add actual balance here */}
+          </div>
                     <button
             className="switchButton"
             onClick={switchTokens}
