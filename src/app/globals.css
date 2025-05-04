@@ -275,18 +275,20 @@ header {
 
 .balanceDisplayOne {
   position: absolute;
-  top: 50px; /* Adjust as needed */
-  right: 16px; /* Adjust based on input padding */
-  font-size: 10px;
-  color: #5F6783;
+  top: 0px; /* Adjust as needed */
+  right: 8px; /* Adjust based on input padding */
+  font-size: 12px;
+  color: #b0b2b8;
+  font-family: 'Franklin Gothic Medium', 'Arial Narrow', Arial, sans-serif;
 }
 
 .balanceDisplayTwo {
   position: absolute;
-  top: 122px; /* Adjust based on input height + spacing */
-  right: 16px; /* Adjust based on input padding */
-  font-size: 10px;
-  color: #5F6783;
+  top: 101px; /* Adjust based on input height + spacing */
+  right: 8px; /* Adjust based on input padding */
+  font-size: 12px;
+  color: #b0b2b8;
+  font-family: 'Franklin Gothic Medium', 'Arial Narrow', Arial, sans-serif;
 }
 
 .switchButton {

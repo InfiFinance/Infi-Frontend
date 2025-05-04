@@ -20,6 +20,11 @@ import { BrowserProvider, Contract, Eip1193Provider, ethers, formatUnits, JsonRp
 // const READ_ONLY_RPC_URL = '/api/rpc-proxy'; // Old relative path
 const READ_ONLY_RPC_URL = process.env.NEXT_PUBLIC_READ_ONLY_RPC_URL || 'http://localhost:3000/api/rpc-proxy';
 
+// Minimal ABI for fetching balance
+const erc20AbiMinimal = [
+  "function balanceOf(address owner) view returns (uint256)",
+];
+
 // todo: swap - balance
 interface SwapProps {
   address?: string;
@@ -46,9 +51,39 @@ export default function Swap() {
   const [ethersProvider, setEthersProvider] = useState<BrowserProvider | null>(null);
   const { walletProvider } = useAppKitProvider("eip155");
 
+  // Balance states
+  const [tokenOneBalance, setTokenOneBalance] = useState<string | null>(null);
+  const [tokenTwoBalance, setTokenTwoBalance] = useState<string | null>(null);
+
   // Create read-only provider and router instances, memoized to prevent recreation
   const readOnlyProvider = useMemo(() => new JsonRpcProvider(READ_ONLY_RPC_URL), []);
   const readOnlyRouter = useMemo(() => new Contract(infiRouterAddress, infiRouterAbi, readOnlyProvider), [readOnlyProvider]);
+
+  // Reusable function to fetch and update balances
+  const updateTokenBalances = async (currentAddress: string, currentProvider: BrowserProvider, t1: TokenInfo, t2: TokenInfo) => {
+    setTokenOneBalance("Loading..."); // Indicate loading
+    setTokenTwoBalance("Loading...");
+    try {
+      const tokenOneContract = new Contract(t1.address, erc20AbiMinimal, currentProvider);
+      const tokenTwoContract = new Contract(t2.address, erc20AbiMinimal, currentProvider);
+
+      const [balOneWei, balTwoWei] = await Promise.all([
+        tokenOneContract.balanceOf(currentAddress),
+        tokenTwoContract.balanceOf(currentAddress)
+      ]);
+
+      const balOneFormatted = parseFloat(formatUnits(balOneWei, t1.decimals)).toFixed(4);
+      const balTwoFormatted = parseFloat(formatUnits(balTwoWei, t2.decimals)).toFixed(4);
+
+      setTokenOneBalance(balOneFormatted);
+      setTokenTwoBalance(balTwoFormatted);
+
+    } catch (error) {
+      console.error("Error fetching balances:", error);
+      setTokenOneBalance("N/A"); // Indicate error
+      setTokenTwoBalance("N/A"); // Indicate error
+    }
+  };
 
   const [isQuerying, setIsQuerying] = useState(false); // Optional: for loading indicator
   const [isProcessingSwap, setIsProcessingSwap] = useState(false); // State for swap button disabling
@@ -450,6 +485,12 @@ useEffect(() => {
           setTokenOneAmount('');
           setTokenTwoAmount('');
 
+          // --- Re-fetch balances after successful swap ---
+          if (address && ethersProvider) { // Ensure we still have address/provider
+            updateTokenBalances(address, ethersProvider, tokenOne, tokenTwo);
+          }
+          // --- End Re-fetch --- 
+
       } else {
           messageApi.error({ content: 'Swap transaction failed (reverted).', key: 'swapStatus', duration: 5 });
       }
@@ -579,6 +620,17 @@ useEffect(() => {
     </div>
   );
 
+  // Effect to fetch balances when connection status, address, tokens, or provider change
+  useEffect(() => {
+    if (isConnected && address && ethersProvider) {
+      updateTokenBalances(address, ethersProvider, tokenOne, tokenTwo);
+    } else {
+      // Reset balances if wallet disconnects or address/provider not available
+      setTokenOneBalance(null);
+      setTokenTwoBalance(null);
+    }
+  }, [isConnected, address, ethersProvider, tokenOne.address, tokenTwo.address, tokenOne.decimals, tokenTwo.decimals]); // Dependencies remain the same
+
   return (
     <>
     <div className="min-h-screen flex justify-center items-start py-12">
@@ -620,7 +672,10 @@ useEffect(() => {
             className="bg-transparent border border-gray-700 rounded-xl p-4"
           />
           <div className="balanceDisplayOne">
-            Balance: 34343556.45466 {/* TODO: Add actual balance here */}
+            {/* Conditionally render balance */}
+            {isConnected && (
+              <span>Balance: {tokenOneBalance !== null ? tokenOneBalance : 'Loading...'}</span>
+            )}
           </div>
           <Input
             placeholder="0"
@@ -629,7 +684,10 @@ useEffect(() => {
             className="bg-transparent border border-gray-700 rounded-xl p-4"
           />
           <div className="balanceDisplayTwo">
-            Balance: 34343556.45466 {/* TODO: Add actual balance here */}
+            {/* Conditionally render balance */} 
+            {isConnected && (
+              <span>Balance: {tokenTwoBalance !== null ? tokenTwoBalance : 'Loading...'}</span>
+            )}
           </div>
                     <button
             className="switchButton"
