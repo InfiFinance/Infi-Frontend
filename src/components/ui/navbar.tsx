@@ -60,7 +60,7 @@ export function Navbar() {
   return (
     <header>
       <div className='leftH'>
-        <Image src={"/infilogo.jpg"} alt='eth' className='logo' width={100} height={100}/>
+        <Image src={"/logotpnt.png"} alt='Infi Logo' className='logo' width={200} height={50}/>
         <Link href='/' className='link'>
           <div className='headerItem'>Swap</div>  
         </Link>
