@@ -648,7 +648,7 @@ export default function Swap() {
           readOnlyProvider={readOnlyProvider}
         />
 
-        <div className="w-full max-w-md bg-[#0E111B] border-2 border-[#21273a] rounded-2xl p-6 space-y-4">
+        <div className="w-full max-w-md p-6 space-y-4">
           <div className="flex justify-between items-center">
             <h4 className="text-xl font-bold">Swap</h4>
             <Modal
@@ -792,8 +792,8 @@ export default function Swap() {
 
       </div>
       <div className={`${audiowide.className} flex items-end justify-center mt-40 h-[30rem]`}>
-  <TextHoverEffect text="Infi" />
-</div>
+        <TextHoverEffect text="Infi" />
+      </div>
 
 
 
