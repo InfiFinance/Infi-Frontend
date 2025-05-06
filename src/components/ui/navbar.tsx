@@ -5,9 +5,7 @@ import { useState, useEffect } from 'react'
 
 //@ts-ignore
 import { ChevronDownIcon } from '@heroicons/react/24/solid'
-import {  useAppKit, useAppKitAccount, useDisconnect } from '@reown/appkit/react'
-
-
+import { useAppKit, useAppKitAccount, useDisconnect } from '@reown/appkit/react'
 
 // const { open, close } = useAppKit()
 
@@ -17,7 +15,7 @@ import {  useAppKit, useAppKitAccount, useDisconnect } from '@reown/appkit/react
 export function Navbar() {
   const { open, close } = useAppKit()
   const { address, isConnected, caipAddress, status, embeddedWalletInfo } =
-  useAppKitAccount();
+    useAppKitAccount();
 
   const { disconnect } = useDisconnect();
 
@@ -28,7 +26,7 @@ export function Navbar() {
     setHasMounted(true);
   }, []);
 
-  // Add the effect here, inside the component function scope
+  // Save user effect
   useEffect(() => {
     const saveUser = async (walletAddress: string) => {
       try {
@@ -55,82 +53,105 @@ export function Navbar() {
       console.log('Wallet connected, attempting to save user:', address);
       saveUser(address);
     }
-  }, [isConnected, address, hasMounted]); // Add hasMounted dependency
+  }, [isConnected, address, hasMounted]);
 
   return (
-    <header>
-      <div className='leftH'>
-        <Image src={"/logotpnt.png"} alt='Infi Logo' className='logo' width={200} height={50}/>
-        <Link href='/' className='link'>
-          <div className='headerItem'>Swap</div>  
+    <div className="fixed top-0 left-0 right-0 z-50 flex justify-between items-center py-3 px-4 border-b border-gray-800">
+      <div className="flex items-center space-x-6">
+        <Link href="/" className="text-white font-bold">
+          <Image src="/logotpnt.png" alt="Infi Logo" width={200} height={50} className="h-8 w-auto" />
         </Link>
-        {/* <Link href='/tokens' className='link'>
-          <div className='headerItem'>Tokens</div>
-        </Link> */}
-        <div className='relative group'
-          onMouseEnter={() => setIsEarnOpen(true)}
-          onMouseLeave={(e) => {
-            const rect = e.currentTarget.getBoundingClientRect();
-            const isInDropdown = 
-              e.clientY >= rect.top &&
-              e.clientY <= rect.bottom + 150 && // Add extra height for dropdown
-              e.clientX >= rect.left &&
-              e.clientX <= rect.left + 192; // Dropdown width (w-48 = 12rem = 192px)
-            if (!isInDropdown) {
-              setIsEarnOpen(false);
-            }
-          }}
-        >
-          <div 
-            className='headerItem flex items-center gap-1 cursor-pointer'
+        
+        <Link href="/swap" className="text-white font-medium hover:text-white">
+          Swap
+        </Link>
+        
+        {/* Earn Dropdown */}
+        <div className="relative">
+          <button 
+            className="flex items-center text-gray-500 hover:text-white"
+            onClick={() => setIsEarnOpen(!isEarnOpen)}
+            onBlur={() => setTimeout(() => setIsEarnOpen(false), 100)}
           >
-            Earn
-            <ChevronDownIcon className='w-4 h-4' />
-          </div>
+            <span>Earn</span>
+            <svg 
+              className="ml-1 w-4 h-4" 
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24" 
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
+            </svg>
+          </button>
+          
           {isEarnOpen && (
-            <div className='absolute top-full left-0 mt-1 w-48 bg-[#1f2639] rounded-lg shadow-lg border border-[#21273a] py-2'>
-              <Link href='/pools' className='link' onClick={() => setIsEarnOpen(false)}>
-                <div className='px-4 py-2 hover:bg-[#2c364f] cursor-pointer'>Pools</div>
+            <div className="absolute top-full left-0 mt-1 w-48 bg-[#0e1420] bg-opacity-80 backdrop-blur-md rounded-lg border border-[#1b2131] py-1 z-10">
+              <Link 
+                href="/pools" 
+                className="block px-4 py-2 text-white hover:bg-[#171f2e] hover:bg-opacity-70 transition-colors"
+                onClick={() => setIsEarnOpen(false)}
+              >
+                Pools
               </Link>
-              <Link href='/add-liquidity' className='link' onClick={() => setIsEarnOpen(false)}>
-                <div className='px-4 py-2 hover:bg-[#2c364f] cursor-pointer'>Add liquidity</div>
+              <Link 
+                href="/create-pool" 
+                className="block px-4 py-2 text-white hover:bg-[#171f2e] hover:bg-opacity-70 transition-colors"
+                onClick={() => setIsEarnOpen(false)}
+              >
+                Create Pool
               </Link>
-              <Link href='/create-pool' className='link' onClick={() => setIsEarnOpen(false)}>
-                <div className='px-4 py-2 hover:bg-[#2c364f] cursor-pointer'>Create pools</div>
+              <Link 
+                href="/add-liquidity" 
+                className="block px-4 py-2 text-white hover:bg-[#171f2e] hover:bg-opacity-70 transition-colors"
+                onClick={() => setIsEarnOpen(false)}
+              >
+                Add Liquidity
               </Link>
             </div>
           )}
         </div>
-        <Link href='https://x.com/infiexchange' className='link'>
-          <div className='headerItem'>Contact us</div>
+        
+        <Link href="https://x.com/infiexchange" target="_blank" className="text-gray-500 hover:text-white">
+          Contact us
         </Link>
       </div>
-      <div className='rightH'>
-        <div className='headerItem'>
-       {/* onClick close tbd */}
-        </div>
+      
+      <div>
         {!hasMounted ? (
           // Render the default state (matching server) before hydration
-          <div className='connectButton' onClick={() => open()}>
+          <button 
+            className="bg-blue-900 text-blue-500 px-4 py-2 rounded-xl font-medium hover:bg-blue-800 transition-colors hover:cursor-pointer"
+            onClick={() => open?.()}
+          >
             Connect
-          </div>
+          </button>
         ) : isConnected ? (
           // Render connected state after hydration
-          <div className='relative group'>
-            <div className='connectButton group-hover:hidden' onClick={() => close()}>
+          <div className="relative group">
+            <button 
+              className="group-hover:hidden bg-blue-900 text-blue-500 px-4 py-2 rounded-xl font-medium hover:bg-blue-800 transition-colors hover:cursor-pointer"
+              onClick={() => close?.()}
+            >
               {address?.slice(0, 6)}...{address?.slice(-4)}
-            </div>
-            <div className='connectButton hidden group-hover:block' onClick={async ()=> await disconnect()}>
+            </button>
+            <button 
+              className="hidden group-hover:block bg-blue-900 text-blue-500 px-4 py-2 rounded-xl font-medium hover:bg-blue-800 transition-colors hover:cursor-pointer"
+              onClick={async () => await disconnect?.()}
+            >
               Logout
-            </div>
+            </button>
           </div>
         ) : (
           // Render disconnected state after hydration
-          <div className='connectButton' onClick={() => open()}>
+          <button 
+            className="bg-blue-900 text-blue-500 px-4 py-2 rounded-xl font-medium hover:bg-blue-800 transition-colors hover:cursor-pointer"
+            onClick={() => open?.()}
+          >
             Connect
-          </div>
+          </button>
         )}
       </div>
-    </header>
-  )
+    </div>
+  );
 }

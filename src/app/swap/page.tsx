@@ -39,10 +39,10 @@ interface SwapProps {
 export default function Swap() {
   const [slippage, setSlippage] = useState<number>(2.5);
   const [messageApi, contextHolder] = message.useMessage();
-  const [tokenOneAmount, setTokenOneAmount] = useState<string>('');
-  const [tokenTwoAmount, setTokenTwoAmount] = useState<string>('');
-  const [tokenOne, setTokenOne] = useState<TokenInfo>(DEFAULT_TOKEN_LIST.tokens[0]);
-  const [tokenTwo, setTokenTwo] = useState<TokenInfo>(DEFAULT_TOKEN_LIST.tokens[1]);
+  const [tokenOneAmount, setTokenOneAmount] = useState<string>('100');
+  const [tokenTwoAmount, setTokenTwoAmount] = useState<string>('0.701896454');
+  const [tokenOne, setTokenOne] = useState<TokenInfo>(DEFAULT_TOKEN_LIST.tokens.find(t => t.symbol === 'USDC') || DEFAULT_TOKEN_LIST.tokens[0]);
+  const [tokenTwo, setTokenTwo] = useState<TokenInfo>(DEFAULT_TOKEN_LIST.tokens.find(t => t.symbol === 'SOL') || DEFAULT_TOKEN_LIST.tokens[1]);
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [changeToken, setChangeToken] = useState<number>(1);
   const [routePath, setRoutePath] = useState<string[]>([]);
@@ -93,7 +93,14 @@ export default function Swap() {
   const [isQuerying, setIsQuerying] = useState(false); // Optional: for loading indicator
   const [isProcessingSwap, setIsProcessingSwap] = useState(false); // State for swap button disabling
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Ref to store timeout ID
-  const [estimatedGasFee, setEstimatedGasFee] = useState<string>('...');
+  const [estimatedGasFee, setEstimatedGasFee] = useState<string>('0.000000');
+  const [transactionMode, setTransactionMode] = useState<string>('default');
+  const [progress, setProgress] = useState<number>(0);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+  const progressInterval = useRef<NodeJS.Timeout | null>(null);
+
+  const [isEarnDropdownOpen, setIsEarnDropdownOpen] = useState<boolean>(false);
+
   useEffect(() => {
     // Only create the BrowserProvider if walletProvider is available
     if (walletProvider) {
@@ -491,7 +498,7 @@ export default function Swap() {
         setTokenTwoAmount('');
 
         // --- Re-fetch balances after successful swap ---
-        if (address && ethersProvider) { // Ensure we still have address/provider
+        if (address && ethersProvider) {
           updateTokenBalances(address, ethersProvider, tokenOne, tokenTwo);
         }
         // --- End Re-fetch --- 
@@ -519,8 +526,46 @@ export default function Swap() {
     }
   };
 
+  // Handle setting token amount to half of balance
+  const handleHalfBalance = () => {
+    if (!tokenOneBalance || !isConnected) return;
+    
+    try {
+      const balanceValue = parseFloat(tokenOneBalance);
+      if (isNaN(balanceValue) || balanceValue <= 0) return;
+      
+      // Calculate half of balance and format it properly
+      const halfBalance = (balanceValue / 2).toString();
+      setTokenOneAmount(halfBalance);
+      
+      // Trigger exchange rate calculation
+      const event = { target: { value: halfBalance } } as React.ChangeEvent<HTMLInputElement>;
+      handleInputChange(event);
+    } catch (error) {
+      console.error("Error calculating half balance:", error);
+    }
+  };
+
+  // Handle setting token amount to max balance
+  const handleMaxBalance = () => {
+    if (!tokenOneBalance || !isConnected) return;
+    
+    try {
+      const balanceValue = parseFloat(tokenOneBalance);
+      if (isNaN(balanceValue) || balanceValue <= 0) return;
+      
+      // Use entire balance
+      setTokenOneAmount(tokenOneBalance);
+      
+      // Trigger exchange rate calculation
+      const event = { target: { value: tokenOneBalance } } as React.ChangeEvent<HTMLInputElement>;
+      handleInputChange(event);
+    } catch (error) {
+      console.error("Error setting max balance:", error);
+    }
+  };
+
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
-  const [transactionMode, setTransactionMode] = useState<string>('default');
   const [customSlippage, setCustomSlippage] = useState<string>('');
   const [mevProtection, setMevProtection] = useState<boolean>(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState<boolean>(false);
@@ -636,10 +681,62 @@ export default function Swap() {
     }
   }, [isConnected, address, ethersProvider, tokenOne.address, tokenTwo.address, tokenOne.decimals, tokenTwo.decimals]); // Dependencies remain the same
 
+  // Progress bar animation - runs every 15 seconds
+  useEffect(() => {
+    // Start progress animation
+    const startProgressAnimation = () => {
+      // Clear any existing interval
+      if (progressInterval.current) {
+        clearInterval(progressInterval.current);
+      }
+      
+      setProgress(0);
+      setIsRefreshing(true);
+      
+      // Update progress every 150ms to complete in 15 seconds
+      // 15000ms / 150ms = 100 steps to reach 100%
+      progressInterval.current = setInterval(() => {
+        setProgress(prevProgress => {
+          const newProgress = prevProgress + 0.01;
+          
+          // When it hits 100%, reset and trigger refresh
+          if (newProgress >= 1) {
+            clearInterval(progressInterval.current!);
+            setIsRefreshing(false);
+            
+            // Refresh the quote
+            if (tokenOneAmount && parseFloat(tokenOneAmount) > 0) {
+              const event = { target: { value: tokenOneAmount } } as React.ChangeEvent<HTMLInputElement>;
+              handleInputChange(event);
+            }
+            
+            // Restart the animation
+            setTimeout(startProgressAnimation, 100);
+            return 0;
+          }
+          
+          return newProgress;
+        });
+      }, 150);
+    };
+    
+    // Start the animation initially
+    startProgressAnimation();
+    
+    // Cleanup on unmount
+    return () => {
+      if (progressInterval.current) {
+        clearInterval(progressInterval.current);
+      }
+    };
+  }, [tokenOneAmount]); // Re-initialize when tokenOneAmount changes
+
   return (
     <>
-      {/* Removed min-h-screen to prevent overflow */}
-      <div className="flex justify-center items-start py-12">
+     
+    
+      {/* Main Content */}
+      <div className="flex justify-center items-start py-6">
         {contextHolder}
         <TokenSelectionModal
           isOpen={isOpen}
@@ -648,9 +745,87 @@ export default function Swap() {
           readOnlyProvider={readOnlyProvider}
         />
 
-        <div className="w-full max-w-md p-6 space-y-4">
-          <div className="flex justify-between items-center">
-            <h4 className="text-xl font-bold">Swap</h4>
+        <div className="flex flex-col">
+          {/* Header with Swap title and settings row */}
+          <div className="flex flex-col mb-5">
+            {/* Swap heading */}
+            <h4 className="text-2xl font-bold text-white mb-3">Swap</h4>
+            
+            {/* Controls row */}
+            <div className="flex justify-between items-center">
+              {/* Aggregator Mode toggle on the left */}
+              <div 
+                className="flex items-center bg-[#0c111b] px-3 py-1.5 rounded-md cursor-pointer" 
+                onClick={() => {/* Future implementation */}}
+              >
+                <span className="text-white text-sm mr-2">Aggregator Mode</span>
+                <div className={`relative w-10 h-5 bg-[#171f2e] rounded-md transition-colors ${true ? 'bg-blue-600' : 'bg-gray-600'}`}>
+                  <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform ${true ? 'translate-x-5' : 'translate-x-0'}`}></div>
+                </div>
+                <svg 
+                  className="ml-2 text-gray-400" 
+                  width="12" 
+                  height="12" 
+                  viewBox="0 0 24 24" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  strokeWidth="2"
+                >
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </div>
+              
+              {/* Right side controls */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setIsSettingsOpen(true)}
+                  className="text-gray-400 hover:text-white cursor-pointer transition-colors flex items-center text-sm px-2 py-1 rounded-lg bg-[#171f2e]"
+                >
+                  <SettingOutlined style={{ fontSize: '14px', marginRight: '4px' }} />
+                  <span>{slippage}%</span>
+                </button>
+                
+                <button
+                  className="text-gray-400 hover:text-white cursor-pointer transition-colors flex items-center justify-center w-8 h-8 rounded-lg bg-[#171f2e]"
+                  onClick={() => {
+                    // Reset progress and restart animation
+                    setProgress(0);
+                    
+                    // Refresh quote
+                    if (tokenOneAmount && parseFloat(tokenOneAmount) > 0) {
+                      const event = { target: { value: tokenOneAmount } } as React.ChangeEvent<HTMLInputElement>;
+                      handleInputChange(event);
+                    }
+                  }}
+                >
+                  {/* Circular progress bar */}
+                  <svg width="20" height="20" viewBox="0 0 24 24">
+                    <circle
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      fill="none"
+                      className="text-[#1a1e27]"
+                    />
+                    <circle
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="#3b82f6"
+                      strokeWidth="2"
+                      fill="none"
+                      strokeLinecap="round"
+                      strokeDasharray="62.83"
+                      strokeDashoffset={62.83 * (1 - progress)}
+                      transform="rotate(-90 12 12)"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            
             <Modal
               open={isSettingsOpen}
               onCancel={() => setIsSettingsOpen(false)}
@@ -661,98 +836,168 @@ export default function Swap() {
             >
               {settingsContent}
             </Modal>
-            <button
-              onClick={() => setIsSettingsOpen(true)}
-              className="text-gray-500 hover:text-white cursor-pointer transition-colors text-xl hover:cursor-pointer"
-            >
-              <SettingOutlined />
-            </button>
           </div>
 
-          <div className="relative space-y-2">
-            <Input
-              placeholder="0"
-              value={tokenOneAmount}
-              onChange={handleInputChange}
-              disabled={false}
-              className="bg-transparent border border-gray-700 rounded-xl p-4"
-            />
-            <div className="balanceDisplayOne">
-              {/* Conditionally render balance */}
-              {isConnected && (
-                <span>Balance: {tokenOneBalance !== null ? tokenOneBalance : 'Loading...'}</span>
-              )}
+          {/* Selling Section */}
+          <div className="mb-6">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-gray-400 text-sm">Selling</span>
+              <span className="text-gray-400 text-sm">
+                {isConnected ? (tokenOneBalance !== null ? `${tokenOneBalance} ${tokenOne.symbol}` : 'Loading...') : `0 ${tokenOne.symbol}`}
+              </span>
             </div>
-            <Input
-              placeholder="0"
-              value={tokenTwoAmount}
-              disabled={true}
-              className="bg-transparent border border-gray-700 rounded-xl p-4"
-            />
-            <div className="balanceDisplayTwo">
-              {/* Conditionally render balance */}
-              {isConnected && (
-                <span>Balance: {tokenTwoBalance !== null ? tokenTwoBalance : 'Loading...'}</span>
-              )}
-            </div>
-            <button
-              className="switchButton"
-              onClick={switchTokens}
-            >
-              <ArrowDownOutlined className="text-gray-400" />
-            </button>
 
-            <button
-              className=" assetOne"
-              onClick={() => openModal(1)}
-            >
-              <img src={"/token.png"} alt={tokenOne.symbol} className="logo" />
-              <span>{tokenOne.symbol}</span>
-            </button>
-
-            <button
-              className="assetTwo"
-              onClick={() => openModal(2)}
-            >
-              <img src={"/token.png"} alt={tokenTwo.symbol} className="logo" />
-              <span>{tokenTwo.symbol}</span>
-            </button>
-          </div>
-
-          {/* Transaction Details Dropdown */}
-          {tokenOneAmount && tokenTwoAmount && tokenTwoAmount !== "0.00" && tokenOneAmount && tokenTwoAmount && tokenTwoAmount !== "0" && (
-            <div className="bg-[#1f2639] rounded-lg p-4 space-y-3">
-              <div className="flex justify-between items-center cursor-pointer" onClick={() => setIsDetailsOpen(!isDetailsOpen)}>
-                <span className="text-sm text-gray-400 "> <span className="text-sm text-gray-400">Rate: </span>{`1 ${tokenOne.symbol} = ${(parseFloat(tokenTwoAmount) / parseFloat(tokenOneAmount)).toFixed(6)} ${tokenTwo.symbol}`}</span>
-                <svg
-                  className={`w-4 h-4 text-gray-400  transition-transform ${isDetailsOpen ? 'rotate-180' : ''}`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  xmlns="http://www.w3.org/2000/svg"
+            <div className="bg-[#0e1420] rounded-lg p-4 border border-[#1b2131]">
+              <div className="flex items-center space-x-2 mb-3">
+                <button 
+                  className="flex items-center space-x-1 bg-[#171f2e] rounded-full px-3 py-1.5"
+                  onClick={() => openModal(1)}
                 >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  <img src="/token.png" alt={tokenOne.symbol} className="w-5 h-5" />
+                  <span className="text-white text-sm">{tokenOne.symbol}</span>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="ml-1">
+                    <path d="M6 9l6 6 6-6" />
+                  </svg>
+                </button>
+                
+                <button 
+                  className="text-xs bg-[#171f2e] text-gray-400 px-2 py-0.5 rounded hover:bg-[#232e47] transition-colors"
+                  onClick={handleHalfBalance}
+                  disabled={!isConnected || !tokenOneBalance}
+                >
+                  HALF
+                </button>
+                <button 
+                  className="text-xs bg-[#171f2e] text-gray-400 px-2 py-0.5 rounded hover:bg-[#232e47] transition-colors"
+                  onClick={handleMaxBalance}
+                  disabled={!isConnected || !tokenOneBalance}
+                >
+                  MAX
+                </button>
+              </div>
+
+              <div className="text-right">
+                <input
+                  type="text"
+                  value={tokenOneAmount}
+                  onChange={handleInputChange}
+                  className="w-full bg-transparent text-white text-4xl font-medium text-right border-none outline-none p-0"
+                  placeholder="0"
+                />
+                <div className="text-gray-400 text-sm">${tokenOneAmount}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Switch Button */}
+          <div className="flex justify-center -my-3 z-10">
+            <button 
+              onClick={switchTokens}
+              className="bg-[#0c111b] rounded-full p-2"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M19 14l-7 7-7-7" />
+                <path d="M5 10l7-7 7 7" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Buying Section */}
+          <div className="mb-4">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-gray-400 text-sm">Buying</span>
+              <span className="text-gray-400 text-sm">
+                {isConnected ? (tokenTwoBalance !== null ? `${tokenTwoBalance} ${tokenTwo.symbol}` : 'Loading...') : `0 ${tokenTwo.symbol}`}
+              </span>
+            </div>
+
+            <div className="bg-[#0e1420] rounded-lg p-4 border border-[#1b2131]">
+              <div className="flex items-center mb-3">
+                <button 
+                  className="flex items-center space-x-1 bg-[#171f2e] rounded-full px-3 py-1.5"
+                  onClick={() => openModal(2)}
+                >
+                  <img src="/token.png" alt={tokenTwo.symbol} className="w-5 h-5" />
+                  <span className="text-white text-sm">{tokenTwo.symbol}</span>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="ml-1">
+                    <path d="M6 9l6 6 6-6" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="text-right">
+                <div className="text-white text-4xl font-medium">{tokenTwoAmount}</div>
+                <div className="text-gray-400 text-sm">${(parseFloat(tokenTwoAmount || "0") * 142.53).toFixed(2)}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Swap Button */}
+          <button
+            onClick={handleButtonClick}
+            disabled={isProcessingSwap || (isConnected && (!tokenOneAmount || parseFloat(tokenOneAmount) <= 0))}
+            className={`w-full py-3 rounded-lg font-medium mt-2 ${
+              isProcessingSwap 
+                ? "bg-gray-700 text-gray-400 cursor-not-allowed" 
+                : isConnected 
+                  ? (tokenOneAmount && parseFloat(tokenOneAmount) > 0)
+                    ? "bg-blue-600 text-white hover:bg-blue-700 cursor-pointer"
+                    : "bg-gray-700 text-gray-400 cursor-not-allowed"
+                  : "bg-blue-600 text-white hover:bg-blue-700 cursor-pointer"
+            }`}
+          >
+            {isProcessingSwap 
+              ? "Processing..." 
+              : isConnected 
+                ? (tokenOneAmount && parseFloat(tokenOneAmount) > 0) 
+                  ? "Swap" 
+                  : "Enter an amount"
+                : "Connect Wallet"
+            }
+          </button>
+
+          {/* Details Section - Only shown when there is valid input */}
+          {tokenOneAmount && 
+           tokenOneAmount !== "0" && 
+           tokenOneAmount !== "0.00" && 
+           !isNaN(parseFloat(tokenOneAmount)) && 
+           parseFloat(tokenOneAmount) > 0 && (
+            <div className="mt-4 text-sm">
+              {/* Rate header - Always visible */}
+              <div 
+                className="flex justify-between items-center py-3 cursor-pointer" 
+                onClick={() => setIsDetailsOpen(!isDetailsOpen)}
+              >
+                <span className="text-white">Rate: 1 {tokenOne.symbol} = {(parseFloat(tokenTwoAmount || "0") / parseFloat(tokenOneAmount || "1")).toFixed(7)} {tokenTwo.symbol}</span>
+                <svg 
+                  width="16" 
+                  height="16" 
+                  viewBox="0 0 24 24" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  strokeWidth="2"
+                  className={`transform transition-transform ${isDetailsOpen ? 'rotate-180' : ''}`}
+                >
+                  <path d="M19 9l-7 7-7-7" />
                 </svg>
               </div>
 
+              {/* Collapsible content */}
               {isDetailsOpen && (
-                <div className="space-y-2">
-                  {/* <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-400">Rate</span>
-                  <span className="text-sm text-white">{`1 ${tokenOne.symbol} = ${(parseFloat(tokenTwoAmount) / parseFloat(tokenOneAmount)).toFixed(6)} ${tokenTwo.symbol}`}</span>
-                </div> */}
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-400">Network Fee (est.)</span>
-                    <span className="text-sm text-white">~ {estimatedGasFee} ETH</span>
+                <div>
+                  <div className="flex justify-between items-center py-2 border-t border-gray-800 mt-1">
+                    <span className="text-gray-400">Network Fee (est.)</span>
+                    <span className="text-white">~ {estimatedGasFee} ETH</span>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-400">Slippage</span>
-                    <span className="text-sm text-white">{slippage}%</span>
+
+                  <div className="flex justify-between items-center py-2 border-t border-gray-800">
+                    <span className="text-gray-400">Slippage</span>
+                    <span className="text-white">{slippage}%</span>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-400">Route</span>
-                    <span className="text-sm text-white">
-                      {/* Replace the queryRes?.path check with routePath */}
+
+                  <div className="flex justify-between items-center py-2 border-t border-gray-800">
+                    <span className="text-gray-400">Route</span>
+                    <span className="text-white">
                       {routePath.length > 0 ? (
                         routePath.map((token, index) => (
                           <span key={token}>
@@ -765,38 +1010,20 @@ export default function Swap() {
                       )}
                     </span>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-400">Router</span>
-                    <span className="text-sm text-white">Infi Router</span>
+
+                  <div className="flex justify-between items-center py-2 border-t border-gray-800">
+                    <span className="text-gray-400">Router</span>
+                    <span className="text-white">Infi Router</span>
                   </div>
                 </div>
               )}
             </div>
-          )}
-
-          <button
-            className={`w-full py-4 rounded-xl font-bold text-lg transition-colors ${ // Conditional Styling
-              !isConnected
-                ? 'bg-blue-900 text-blue-500 hover:bg-blue-800 hover:cursor-pointer' // Always active style when not connected
-                : (!tokenOneAmount || isProcessingSwap) // Style when connected
-                  ? 'bg-blue-900/40 text-blue-500/60 cursor-not-allowed' // Disabled style if no amount or processing
-                  : 'bg-blue-900 text-blue-500 hover:bg-blue-800 hover:cursor-pointer' // Active style otherwise
-              }`}
-            onClick={handleButtonClick} // Use the new handler
-            disabled={isProcessingSwap || (isConnected && !tokenOneAmount)} // Updated disabled logic
-          >
-            {/* Conditional Text */}
-            {isConnected ? 'Swap' : 'Connect Wallet'}
-          </button>
-        </div>
-
+           )}
+         </div>
       </div>
-      <div className={`${audiowide.className} flex items-end justify-center mt-40 h-[30rem]`}>
+      {/* <div className={`${audiowide.className} flex items-end justify-center mt-40 h-[30rem]`}>
         <TextHoverEffect text="Infi" />
-      </div>
-
-
-
+      </div> */}
     </>
   );
 }

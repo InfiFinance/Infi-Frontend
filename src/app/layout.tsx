@@ -20,8 +20,6 @@ export const metadata: Metadata = {
   description: "The Premier Liquidity Hub on Pharos Network",
 };
 
-
-
 export default async function RootLayout({
   children,
 }: Readonly<{
@@ -35,10 +33,12 @@ export default async function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <ContextProvider cookies={cookies}>
-        <div className="px-8 py-4">
-          <Navbar />
-          {children}
-        </div>
+          <div className="px-8">
+            <Navbar />
+            <div className="pt-16">
+              {children}
+            </div>
+          </div>
         </ContextProvider>
       </body>
     </html>
