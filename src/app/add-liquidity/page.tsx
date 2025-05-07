@@ -20,6 +20,7 @@ import {
     getGasOptions
 } from '@/utils/contracts';
 import { LiquidityService, processTickRange } from '@/utils/liquidityService';
+import Stepper from '@/components/ui/Stepper';
 
 const MIN_TICK = -887272;
 const MAX_TICK = 887272;
@@ -435,22 +436,29 @@ const AddLiquidity = () => {
   };
 
   return (
-    <div className="flex w-full max-w-6xl mx-auto p-4 gap-8">
+    <div className="w-full max-w-6xl mx-auto p-2 md:p-4 gap-4 md:gap-8 mt-4 md:mt-12 flex flex-col md:flex-row">
       {contextHolder}
-      <div className="w-1/4 bg-[#1f2639] rounded-lg p-4 h-fit border border-[#21273a]">
+      {/* Mobile Stepper */}
+      <div className="block md:hidden">
+        <Stepper
+          steps={["Select Pair & Fee", "Deposit & Range"]}
+          currentStep={currentStep}
+        />
+      </div>
+      {/* Sidebar Stepper (Desktop only) */}
+      <div className="hidden md:block w-full md:w-1/4 bg-[#1f2639] rounded-lg p-4 h-fit border border-[#21273a]">
         <div className="space-y-6">
-          <div className={`flex items-start space-x-4 ${currentStep === 1 ? '' : 'opacity-50'}}}`}>
+          <div className={`flex items-start space-x-4 ${currentStep === 1 ? '' : 'opacity-50'}`}> 
             <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-medium">1</div>
             <div>
-              <h3 className="font-medium text-white">Select token & fee tier</h3>
-              <p className="text-sm text-gray-400">Select the token you want to provide liquidity for.</p>
+              <h3 className="font-medium text-white">Select Pair & Fee</h3>
+              <p className="text-sm text-gray-400">Select the token pair and fee tier.</p>
             </div>
           </div>
-
-          <div className={`flex items-start space-x-4 ${currentStep === 2 ? '' : 'opacity-50'}`}>
+          <div className={`flex items-start space-x-4 ${currentStep === 2 ? '' : 'opacity-50'}`}> 
             <div className={`flex-shrink-0 w-8 h-8 rounded-full ${currentStep === 2 ? 'bg-blue-500' : 'bg-[#2c3552]'} flex items-center justify-center text-white font-medium`}>2</div>
             <div>
-              <h3 className="font-medium text-white">Deposit & Set Price Range</h3>
+              <h3 className="font-medium text-white">Deposit & Set Range</h3>
               <p className="text-sm text-gray-400">Enter deposit amounts and set price range.</p>
             </div>
           </div>
@@ -471,14 +479,14 @@ const AddLiquidity = () => {
               strokeLinecap="round"
               strokeLinejoin="round"
             >
-              <path d="m15 18-6-6 6-6"/>
+              <path d="m15 18-6-6 6-6" />
             </svg>
             Back
           </button>
         )}
       </div>
-
-      <div className="flex-1 bg-[#1f2639] rounded-lg p-6 border border-[#21273a]">
+      {/* Main Form */}
+      <div className="flex-1 bg-[#1f2639] rounded-lg p-4 md:p-6 border border-[#21273a] w-full">
         {currentStep === 1 && (
           <div className="space-y-6">
             <h2 className="text-xl font-medium text-white">Select pair</h2>
