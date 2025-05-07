@@ -1,4 +1,5 @@
 <div>
+<!--     todo change logo here -->
     <img align="left" alt="InfiRouter Logo Placeholder" width="1080px" src="https://assets.hackquest.io/hackathons/projects/logo/jKqHLHwFANe7ruj04bQ91.png" /> 
 </div>
 
