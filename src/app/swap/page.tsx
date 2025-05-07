@@ -16,6 +16,7 @@ import TokenSelectionModal from '@/components/TokenSelectionModal';
 import { useReadContract } from "wagmi";
 import { useAppKitAccount, useAppKitProvider, useAppKit } from '@reown/appkit/react';
 import { BrowserProvider, Contract, Eip1193Provider, ethers, formatUnits, JsonRpcProvider } from "ethers";
+import FullPageLoader from '@/components/ui/FullPageLoader';
 // Define a read-only RPC endpoint - Pointing to the FULL proxy URL for local dev
 // const READ_ONLY_RPC_URL = 'https://devnet.dplabs-internal.com'; // Old direct URL
 // const READ_ONLY_RPC_URL = '/api/rpc-proxy'; // Old relative path
@@ -100,6 +101,7 @@ export default function Swap() {
   const progressInterval = useRef<NodeJS.Timeout | null>(null);
 
   const [isEarnDropdownOpen, setIsEarnDropdownOpen] = useState<boolean>(false);
+  const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
     // Only create the BrowserProvider if walletProvider is available
@@ -731,10 +733,14 @@ export default function Swap() {
     };
   }, [tokenOneAmount]); // Re-initialize when tokenOneAmount changes
 
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoaded(true), 1000);
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
     <>
-     
-    
+      {!isLoaded && <FullPageLoader />}
       {/* Main Content */}
       <div className="flex justify-center items-start py-6">
         {contextHolder}

@@ -5,18 +5,18 @@ import { defineChain } from '@reown/appkit/networks';
 
 // Define the custom network
 export const customNetwork = defineChain({
-  id: 50002,
+  id: 688688,
   caipNetworkId: 'eip155:123456789',
   chainNamespace: 'eip155',
-  name: 'Custom Network',
+  name: 'Pharos Testnet',
   nativeCurrency: {
     decimals: 18,
     name: 'Pharos',
-    symbol: 'PHAROS',
+    symbol: 'PHRS',
   },
   rpcUrls: {
     default: {
-      http: ['https://devnet.dplabs-internal.com'],
+      http: ['https://testnet.dplabs-internal.com/'],
       // Temporarily comment out WebSocket to test if it causes the transport issue
       // webSocket: ['wss://devnet.dplabs-internal.com'], 
     },

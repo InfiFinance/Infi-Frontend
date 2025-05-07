@@ -15,25 +15,25 @@ interface ContractAddresses {
 
 // Chain configuration
 export const CHAIN_CONFIG = {
-  id: 50002,
-  name: "Pharos",
-  rpcUrl: "https://devnet.dplabs-internal.com/",
+  id: 688688,
+  name: "Pharos Testnet",
+  rpcUrl: "https://testnet.dplabs-internal.com/",
   nativeCurrency: {
-    name: "PHA",
-    symbol: "PHA",
+    name: "PHAROS",
+    symbol: "PHRS",
     decimals: 18
   }
 };
 
 // Main contract addresses
 export const ADDRESSES: ContractAddresses = {
-  factory: "0x5f37a6Ea51351BBBED8bD7Ed78EBa923B8D60897",
+  factory: "0xC429540d5358C24629179dF500a7d41C505896E8",
   weth9: "0xe356046C34B8e989E6a311FE6478E2736937699D",
-  swapRouter: "0x11F22a8a07215d1691175A67cDf6630E874Bb17b",
-  nftDescriptor: "0x217755D961eAcD4f5dEcd922d8F3e3dFbe053E19",
-  tokenDescriptor: "0xBa42231Bd6C12547dFe82dBA830B49581305fedD",
-  positionManager: "0xA5ae22A0364c461Ee83868F12fc09616295925aA",
-  nonfungiblePositionManager: "0xA5ae22A0364c461Ee83868F12fc09616295925aA"
+  swapRouter: "0x59F222b758D16BabfCBcA2422882ee5ca688d9Aa",
+  nftDescriptor: "0x73cD380BC0BD80c3283Aced25fcC8E0d00214787",
+  tokenDescriptor: "0x89A38445249d083EFfB576574c7cD9dB4d5c25Af", 
+  positionManager: "0xb03B98eb3446Cdc9EE83633522e946bA55742F88",
+  nonfungiblePositionManager: "0xb03B98eb3446Cdc9EE83633522e946bA55742F88"
 };
 
 // Fee levels used by the protocol

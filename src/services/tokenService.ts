@@ -54,54 +54,34 @@ export const  DEFAULT_TOKEN_LIST = {
   name: 'Default List',
   tokens: [
     {
-      chainId: 50002,
-      address: "0x4fA011420cB227022431255b90acC8E886F19a37",
-      name: "DEVNET",
-      symbol: "DEVNET",
-      decimals: 18
-    },
-    {
-      chainId: 50002,
-      address: "0xE5C1b4cfF0c18aeB92D54148c1F70802F466d93E",
+      chainId: 688688,
+      address: "0x9C102a3953f7605bd59e02A9FEF515523058dE00",
       name: "GOCTO",
       symbol: "GOCTO",
       decimals: 18
     },
     {
-      chainId: 50002,
-      address: "0x6e063A0F514c304ca76Efc6a606bDd64f94CcC9C",
+      chainId: 688688,
+      address: "0x9A741857be48C5069c7294f7c4232Ed0DD46E6Ce",
+      name: "OCTOPUS",
+      symbol: "OCTO",
+      decimals: 18
+    },
+    {
+      chainId: 688688,
+      address: "0xc4D6fC137A14CAEd1e51D9D83f9606c72a32dD30",
       name: "INFI",
       symbol: "INFI",
       decimals: 18
     },
     {
-      chainId: 50002,
-      address: "0xA0675f36409b4512a43E0978A3E4140DEE682b08",
-      name: "OCTOPUS",
-      symbol: "OCTO",
+      chainId: 688688,
+      address: "0xF74903096433b0a948848d79E7c835402897e4e8",
+      name: "SAILOR",
+      symbol: "SAILOR",
       decimals: 18
     },  
-    {
-      chainId: 50002,
-      address: "0x581F6A4EF0462C9E71a4180fa1C586E59466850D",
-      name: "PHAROS",
-      symbol: "PHAROS",
-      decimals: 18
-    },
-    {
-      chainId: 50002,
-      address: "0xe76Fc20065d6aC7c0534C3FC9d59fc3Fe8a3850B",
-      name: "PIKACHU",
-      symbol: "PIKA",
-      decimals: 18
-    },
-    {
-      chainId: 50002,
-      address: "0xBEC3f434B4Ed5f50b6eD2aB0d9Fd4DCA2563069F",
-      name: "USDC",
-      symbol: "USDC",
-      decimals: 18
-    },
+
   ]
 };
 
