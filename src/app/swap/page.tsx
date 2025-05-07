@@ -40,8 +40,8 @@ interface SwapProps {
 export default function Swap() {
   const [slippage, setSlippage] = useState<number>(2.5);
   const [messageApi, contextHolder] = message.useMessage();
-  const [tokenOneAmount, setTokenOneAmount] = useState<string>('100');
-  const [tokenTwoAmount, setTokenTwoAmount] = useState<string>('0.701896454');
+  const [tokenOneAmount, setTokenOneAmount] = useState<string>('');
+  const [tokenTwoAmount, setTokenTwoAmount] = useState<string>('');
   const [tokenOne, setTokenOne] = useState<TokenInfo>(DEFAULT_TOKEN_LIST.tokens.find(t => t.symbol === 'USDC') || DEFAULT_TOKEN_LIST.tokens[0]);
   const [tokenTwo, setTokenTwo] = useState<TokenInfo>(DEFAULT_TOKEN_LIST.tokens.find(t => t.symbol === 'SOL') || DEFAULT_TOKEN_LIST.tokens[1]);
   const [isOpen, setIsOpen] = useState<boolean>(false);
@@ -202,7 +202,7 @@ export default function Swap() {
 
     // Basic validation before setting timeout
     if (!currentInputStr || isNaN(parseFloat(currentInputStr)) || parseFloat(currentInputStr) <= 0) {
-      setTokenTwoAmount("0.00");
+      setTokenTwoAmount("");
       setIsQuerying(false); // Stop querying if input is invalid
       return;
     }
@@ -237,7 +237,7 @@ export default function Swap() {
           setTokenTwoAmount(parseFloat(estimatedOutputFormatted).toFixed(6));
           setRoutePath(res.path || []); // Store the route path
         } else {
-          setTokenTwoAmount("0.00"); // Handle no result
+          setTokenTwoAmount(""); // Handle no result
           setRoutePath([]); // Clear route path if no result
         }
       } catch (err: any) {
@@ -265,8 +265,8 @@ export default function Swap() {
   }, []);
 
   const switchTokens = () => {
-    setTokenOneAmount('0');
-    setTokenTwoAmount('0');
+    setTokenOneAmount('');
+    setTokenTwoAmount('');
     setRoutePath([]); // Clear route path when switching tokens
     const tempToken = tokenOne;
     setTokenOne(tokenTwo);
@@ -279,8 +279,8 @@ export default function Swap() {
   };
 
   const modifyToken = (token: TokenInfo) => {
-    setTokenOneAmount('0');
-    setTokenTwoAmount('0');
+    setTokenOneAmount('');
+    setTokenTwoAmount('');
     setRoutePath([]); // Clear route path when modifying tokens
 
     if (changeToken === 1) {
