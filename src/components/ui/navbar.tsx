@@ -108,7 +108,6 @@ export function Navbar() {
                   : 'text-gray-500 hover:text-white'
               }`}
               onClick={() => setIsEarnOpen(!isEarnOpen)}
-              onBlur={() => setTimeout(() => setIsEarnOpen(false), 100)}
             >
               <span>Earn</span>
               <svg 

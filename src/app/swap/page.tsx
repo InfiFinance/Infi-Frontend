@@ -1,8 +1,8 @@
 "use client";
 
 import { Input, Popover, Radio, Modal, message } from 'antd';
-const infiRouterAddress = require('../../contract/aggregator/pharos/InfiRouter.json').address
-const infiRouterAbi = require('../../contract/aggregator/pharos/InfiRouter.json').abi
+const infiRouterAddress = require('../../contract/aggregator/testnet/InfiRouter.json').address
+const infiRouterAbi = require('../../contract/aggregator/testnet/InfiRouter.json').abi
 import { TextHoverEffect } from "@/components/ui/text-hover-effect";
 import { Audiowide } from 'next/font/google'
 

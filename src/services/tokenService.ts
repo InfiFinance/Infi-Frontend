@@ -1,6 +1,5 @@
 import { ethers } from 'ethers';
 import ERC20ABI from '../contract/abis/ERC20ABI.json';
-import { CHAIN_CONFIG } from '@/constants/addresses';
 
 // Define Token class locally to avoid dependency on @uniswap/sdk-core
 export class Token {

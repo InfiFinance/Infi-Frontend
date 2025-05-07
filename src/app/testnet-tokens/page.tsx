@@ -10,19 +10,82 @@ export default function TestnetTokens() {
   const [messageApi, contextHolder] = message.useMessage();
 
   const handleRequestTokens = async () => {
-    if (!isConnected) {
-      messageApi.error('Please connect your wallet first');
+    if (!isConnected || !address) {
+      messageApi.error('Please connect your wallet first and ensure address is available');
       return;
     }
 
     setIsRequesting(true);
-    messageApi.info('Requesting testnet tokens. This may take a few minutes...');
+    messageApi.loading({ content: 'Requesting testnet tokens... This may take a moment.', key: 'tokenRequest' });
 
-    // Simulate a delay (this will be replaced with actual token request logic later)
-    setTimeout(() => {
-      setIsRequesting(false);
-      messageApi.success('Testnet tokens have been sent to your wallet!');
-    }, 5000); // 5 seconds for demo, will be removed when actual functionality is added
+    try {
+      const response = await fetch(`/api/send-erc20?walletAddress=${address}`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        console.error('API request failed:', data);
+        messageApi.error({ 
+          content: `Error: ${data.error || 'Failed to request tokens. Please try again.'} (HTTP ${response.status})`, 
+          key: 'tokenRequest' 
+        });
+        setIsRequesting(false);
+        return;
+      }
+
+      // Process results for each token
+      let allSuccessfulOrAlreadyMinted = true; // Tracks if all tokens are either success or already_minted
+      let actualErrors = false; // Tracks if any token had a hard error
+
+      if (data.results && Array.isArray(data.results)) {
+        data.results.forEach((result: any) => {
+          if (result.status === 'success') {
+            messageApi.success({ 
+              content: `${result.token} minted successfully! Tx: ${result.txHash.substring(0, 10)}...`, 
+              duration: 5 
+            });
+          } else if (result.status === 'already_minted') {
+            messageApi.info({ 
+              content: `${result.token}: ${result.message || 'Already claimed by your wallet.'}`, 
+              duration: 5 
+            });
+            // This case is not considered a failure for the overall message
+          } else if (result.status === 'system_error') {
+            messageApi.error({
+              content: `System error processing ${result.token || 'request'}: ${result.error || 'Failed to update records.'}`, 
+              duration: 7
+            });
+            allSuccessfulOrAlreadyMinted = false; // A system error during save is a problem
+            actualErrors = true;
+          } else { // Covers 'error' status
+            allSuccessfulOrAlreadyMinted = false;
+            actualErrors = true;
+            messageApi.error({ 
+              content: `Error minting ${result.token}: ${result.error || 'Unknown error'}`,
+              duration: 5 
+            });
+          }
+        });
+      }
+
+      if (actualErrors) {
+        messageApi.error({ content: 'Errors occurred during token request. Please check messages above and console.', key: 'tokenRequest', duration: 7 });
+      } else if (allSuccessfulOrAlreadyMinted) { // Corrected variable name here
+        messageApi.success({ content: 'Token request processed! Check messages above for details.', key: 'tokenRequest', duration: 5 });
+      } else {
+        // This case implies not all were successful/already_minted, but no actualErrors flagged - e.g. if only system_error without other errors.
+        // Or if allSuccessfulOrAlreadyMinted was set to false by a system_error, but actualErrors remained false (if that path was possible).
+        messageApi.warning({ content: 'Token request processed with mixed results. Check messages and console.', key: 'tokenRequest', duration: 5 });
+      }
+
+    } catch (error) {
+      console.error('Failed to request tokens:', error);
+      messageApi.error({ 
+        content: 'An unexpected error occurred while requesting tokens. Please check the console.', 
+        key: 'tokenRequest' 
+      });
+    }
+
+    setIsRequesting(false);
   };
 
   return (
