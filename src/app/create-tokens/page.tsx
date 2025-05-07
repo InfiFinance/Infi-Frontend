@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { message } from 'antd';
 import { useAppKitAccount } from '@reown/appkit/react';
+import { ethers } from 'ethers';
+import MyTokenArtifact from '@/contract/abis/Token.json';
 
 export default function CreateTokens() {
   const { isConnected, address } = useAppKitAccount();
@@ -31,8 +33,8 @@ export default function CreateTokens() {
   };
 
   const handleCreateToken = async () => {
-    if (!isConnected) {
-      messageApi.error('Please connect your wallet first');
+    if (!isConnected || !address) {
+      messageApi.error('Please connect your wallet first and ensure an address is available.');
       return;
     }
 
@@ -47,13 +49,91 @@ export default function CreateTokens() {
     }
 
     setIsCreating(true);
-    messageApi.info('Starting token creation process. This may take a few minutes...');
+    messageApi.loading({ content: 'Deploying token... This may take a few moments.', key: 'deployToken', duration: 0 });
 
-    // Simulate a delay (this will be replaced with actual token creation logic later)
-    setTimeout(() => {
+    try {
+      // Ensure window.ethereum is available (MetaMask or similar provider)
+      if (typeof window.ethereum === 'undefined') {
+        messageApi.error({ content: 'Please install MetaMask or a similar Ethereum wallet provider.', key: 'deployToken' });
+        setIsCreating(false);
+        return;
+      }
+
+      // Create a new ethers provider from window.ethereum
+      const provider = new ethers.BrowserProvider(window.ethereum as any);
+      
+      // Request account access if needed (though useAppKitAccount should handle this)
+      // await provider.send("eth_requestAccounts", []); // Usually handled by wallet connection button
+
+      // Get the signer
+      const signer = await provider.getSigner();
+      const deployerAddress = await signer.getAddress();
+
+      if (deployerAddress.toLowerCase() !== address.toLowerCase()) {
+        messageApi.error({ content: 'Connected wallet address does not match the expected deployer address. Please ensure the correct account is selected in your wallet.', key: 'deployToken'});
+        setIsCreating(false);
+        return;
+      }
+      
+      console.log(`Deploying token with account: ${deployerAddress}`);
+
+      const factory = new ethers.ContractFactory(
+        MyTokenArtifact.abi,
+        MyTokenArtifact.bytecode,
+        signer
+      );
+
+      console.log("Deploying with Name:", tokenName, "Symbol:", tokenSymbol);
+      messageApi.loading({ content: `Deploying ${tokenName} (${tokenSymbol})... Please confirm the transaction in your wallet.`, key: 'deployToken', duration: 0 });
+      
+      const contract = await factory.deploy(tokenName, tokenSymbol);
+      const deploymentTx = contract.deploymentTransaction();
+
+      if (!deploymentTx) {
+        console.error("Deployment transaction is unexpectedly null.");
+        throw new Error("Failed to get deployment transaction object from contract.");
+      }
+      
+      messageApi.loading({ content: `Transaction sent: ${deploymentTx.hash}. Waiting for confirmation...`, key: 'deployToken', duration: 0 });
+      console.log(`Deployment transaction sent: ${deploymentTx.hash}`);
+
+      // Wait for the deployment transaction to be mined (1 confirmation)
+      const receipt = await deploymentTx.wait(1);
+
+      if (!receipt) {
+        console.error("Transaction receipt is unexpectedly null after waiting.");
+        throw new Error("Failed to get transaction receipt after deployment.");
+      }
+
+      const contractAddress = receipt.contractAddress;
+      const transactionHash = receipt.hash;
+
+      if (!contractAddress) {
+        console.error("Contract address is null in the transaction receipt.");
+        throw new Error("Contract address not found in deployment receipt.");
+      }
+
+      console.log(`Contract deployed successfully at address: ${contractAddress}`);
+      console.log(`Transaction confirmed in block: ${receipt.blockNumber}`);
+      
+      messageApi.success({
+        content: `Token "${tokenName}" deployed successfully! Address: ${contractAddress}`,
+        key: 'deployToken',
+        duration: 10
+      });
+
+      // Optionally, you can clear the form or redirect the user
+      // setTokenName('');
+      // setTokenSymbol('');
+      // setTokenImage('');
+
+    } catch (error: any) {
+      console.error("Deployment failed:", error);
+      const errorMessage = error.reason || error.message || "An unknown error occurred during deployment.";
+      messageApi.error({ content: `Deployment failed: ${errorMessage}`, key: 'deployToken', duration: 10 });
+    } finally {
       setIsCreating(false);
-      messageApi.success('Token created successfully! You can now add liquidity to make it tradeable.');
-    }, 5000); // 5 seconds for demo, will be removed when actual functionality is added
+    }
   };
 
   return (
