@@ -740,7 +740,6 @@ export default function Swap() {
 
   return (
     <>
-      {!isLoaded && <FullPageLoader />}
       {/* Main Content */}
       <div className="flex justify-center items-start py-6">
         {contextHolder}
@@ -1027,9 +1026,6 @@ export default function Swap() {
            )}
          </div>
       </div>
-      {/* <div className={`${audiowide.className} flex items-end justify-center mt-40 h-[30rem]`}>
-        <TextHoverEffect text="Infi" />
-      </div> */}
     </>
   );
 }
