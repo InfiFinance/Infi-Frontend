@@ -42,8 +42,8 @@ export default function Swap() {
   const [messageApi, contextHolder] = message.useMessage();
   const [tokenOneAmount, setTokenOneAmount] = useState<string>('');
   const [tokenTwoAmount, setTokenTwoAmount] = useState<string>('');
-  const [tokenOne, setTokenOne] = useState<TokenInfo>(DEFAULT_TOKEN_LIST.tokens.find(t => t.symbol === 'USDC') || DEFAULT_TOKEN_LIST.tokens[0]);
-  const [tokenTwo, setTokenTwo] = useState<TokenInfo>(DEFAULT_TOKEN_LIST.tokens.find(t => t.symbol === 'SOL') || DEFAULT_TOKEN_LIST.tokens[1]);
+  const [tokenOne, setTokenOne] = useState<TokenInfo>(DEFAULT_TOKEN_LIST.tokens.find(t => t.symbol === 'GOCTO') || DEFAULT_TOKEN_LIST.tokens[0]);
+  const [tokenTwo, setTokenTwo] = useState<TokenInfo>(DEFAULT_TOKEN_LIST.tokens.find(t => t.symbol === 'USDC') || DEFAULT_TOKEN_LIST.tokens[1]);
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [changeToken, setChangeToken] = useState<number>(1);
   const [routePath, setRoutePath] = useState<string[]>([]);

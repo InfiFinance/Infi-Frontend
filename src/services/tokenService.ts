@@ -61,6 +61,27 @@ export const  DEFAULT_TOKEN_LIST = {
     },
     {
       chainId: 688688,
+      address: "0xAD902CF99C2dE2f1Ba5ec4D642Fd7E49cae9EE37",
+      name: "USDC",
+      symbol: "USDC",
+      decimals: 18
+    },
+    {
+      chainId: 688688,
+      address: "0xEd59De2D7ad9C043442e381231eE3646FC3C2939",
+      name: "USDT",
+      symbol: "USDT",
+      decimals: 18
+    },
+    {
+      chainId: 688688,
+      address: "0x76aaaDA469D23216bE5f7C596fA25F282Ff9b364",
+      name: "WPHRS",
+      symbol: "WPHRS",
+      decimals: 18
+    },
+    {
+      chainId: 688688,
       address: "0x9A741857be48C5069c7294f7c4232Ed0DD46E6Ce",
       name: "OCTOPUS",
       symbol: "OCTO",
