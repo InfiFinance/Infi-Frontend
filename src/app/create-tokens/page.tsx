@@ -263,7 +263,7 @@ export default function CreateTokens() {
 
               {/* Note */}
               <p className="text-gray-500 text-sm text-center">
-                Note: Token creation requires a small amount of testnet ETH for gas fees.
+                Note: Token creation requires a small amount of testnet PHRS for gas fees.
               </p>
             </div>
           </div>

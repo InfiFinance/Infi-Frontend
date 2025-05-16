@@ -19,6 +19,7 @@ const TOKENS_TO_MINT = [
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const recipientAddress = searchParams.get('walletAddress');
+  const selectedTokenSymbol = searchParams.get('token');
 
   if (!recipientAddress) {
     return NextResponse.json({ error: 'Wallet address is required in query parameters (walletAddress)' }, { status: 400 });
@@ -58,7 +59,15 @@ export async function GET(request: Request) {
     const results = [];
     let newTokensMintedForUserCount = 0;
 
-    for (const tokenInfo of TOKENS_TO_MINT) {
+    const tokensToProcess = selectedTokenSymbol
+      ? TOKENS_TO_MINT.filter(t => t.symbol.toLowerCase() === selectedTokenSymbol.toLowerCase())
+      : TOKENS_TO_MINT;
+
+    if (selectedTokenSymbol && tokensToProcess.length === 0) {
+      return NextResponse.json({ error: `Token symbol '${selectedTokenSymbol}' not found.` }, { status: 400 });
+    }
+
+    for (const tokenInfo of tokensToProcess) {
       console.log(`\nProcessing token: ${tokenInfo.symbol} (${tokenInfo.address})`);
 
       if (!userJustCreated && user && user.mintedTokens && user.mintedTokens.includes(tokenInfo.symbol)) {

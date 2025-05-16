@@ -153,16 +153,7 @@ export function Navbar() {
               </div>
             )}
           </div>
-          
-          <Link 
-            href="/testnet-tokens" 
-            className={`transition-colors ${
-              isActive('/testnet-tokens') ? 'text-white' : 'text-gray-500 hover:text-white'
-            }`}
-          >
-            Testnet Tokens
-          </Link>
-          
+  
           <Link 
             href="/create-tokens" 
             className={`transition-colors ${
@@ -171,6 +162,17 @@ export function Navbar() {
           >
             Create Tokens
           </Link>
+
+                  
+          <Link 
+            href="/faucet" 
+            className={`transition-colors ${
+              isActive('/faucet') ? 'text-white' : 'text-gray-500 hover:text-white'
+            }`}
+          >
+            Faucet
+          </Link>
+          
           
           <Link 
             href="https://x.com/infiexchange" 
