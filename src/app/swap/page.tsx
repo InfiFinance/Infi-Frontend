@@ -931,7 +931,7 @@ export default function Swap() {
               </div>
 
               <div className="text-right">
-                <div className="text-white text-4xl font-medium">{tokenTwoAmount}</div>
+                <div className="text-white text-4xl font-medium">{tokenTwoAmount || "0"}</div>
                 <div className="text-gray-400 text-sm">${(parseFloat(tokenTwoAmount || "0") * 142.53).toFixed(2)}</div>
               </div>
             </div>
