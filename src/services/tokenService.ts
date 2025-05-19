@@ -49,60 +49,83 @@ const TOKEN_CACHE: Record<string, TokenInfo> = {};
 const RECENT_TOKENS_KEY = 'recent_tokens';
 
 // Mock default token list
-export const  DEFAULT_TOKEN_LIST = {
-  name: 'Default List',
+export const DEFAULT_TOKEN_LIST = {
+  name: 'Default Token List',
   tokens: [
     {
       chainId: 688688,
-      address: "0x9C102a3953f7605bd59e02A9FEF515523058dE00",
+      address: "0x9C102a3953f7605bd59e02A9FEF515523058dE00", // Existing GOCTO
       name: "GOCTO",
       symbol: "GOCTO",
-      decimals: 18
+      decimals: 18,
+      // logoURI: "/tokens/gocto.png"
     },
     {
       chainId: 688688,
-      address: "0xAD902CF99C2dE2f1Ba5ec4D642Fd7E49cae9EE37",
-      name: "USDC",
-      symbol: "USDC",
-      decimals: 18
-    },
-    {
-      chainId: 688688,
-      address: "0xEd59De2D7ad9C043442e381231eE3646FC3C2939",
-      name: "USDT",
-      symbol: "USDT",
-      decimals: 18
-    },
-    {
-      chainId: 688688,
-      address: "0x76aaaDA469D23216bE5f7C596fA25F282Ff9b364",
-      name: "WPHRS",
-      symbol: "WPHRS",
-      decimals: 18
-    },
-    {
-      chainId: 688688,
-      address: "0x9A741857be48C5069c7294f7c4232Ed0DD46E6Ce",
-      name: "OCTOPUS",
-      symbol: "OCTO",
-      decimals: 18
-    },
-    {
-      chainId: 688688,
-      address: "0xc4D6fC137A14CAEd1e51D9D83f9606c72a32dD30",
+      address: "0xc4D6fC137A14CAEd1e51D9D83f9606c72a32dD30", // Existing INFI
       name: "INFI",
       symbol: "INFI",
-      decimals: 18
+      decimals: 18,
+      // logoURI: "/tokens/infi.png"
     },
     {
       chainId: 688688,
-      address: "0xF74903096433b0a948848d79E7c835402897e4e8",
-      name: "SAILOR",
-      symbol: "SAILOR",
-      decimals: 18
-    },  
-
+      address: ethers.ZeroAddress, // PHRS Native Token
+      name: "Pharos",
+      symbol: "PHRS",
+      decimals: 18,
+      // logoURI: "/tokens/phrs.png"
+    },
+    {
+      chainId: 688688,
+      address: "0xAD902CF99C2dE2f1Ba5ec4D642Fd7E49cae9EE37", // CRITICAL: Replace with actual USDC address for chainId 688688
+      name: "USD Coin",
+      symbol: "USDC",
+      decimals: 6,
+      // logoURI: "/tokens/usdc.png"
+    },
+    {
+      chainId: 688688,
+      address: "0xEd59De2D7ad9C043442e381231eE3646FC3C2939", // CRITICAL: Replace with actual USDT address for chainId 688688
+      name: "Tether USD",
+      symbol: "USDT",
+      decimals: 6,
+      // logoURI: "/tokens/usdt.png"
+    },
+    {
+      chainId: 688688,
+      address: "0x76aaaDA469D23216bE5f7C596fA25F282Ff9b364", // CRITICAL: Replace with actual WPHRS address for chainId 688688
+      name: "Wrapped Pharos",
+      symbol: "WPHRS",
+      decimals: 18,
+      // logoURI: "/tokens/wphrs.png"
+    },
+    // {
+    //   chainId: 688688,
+    //   address: "0x9A741857be48C5069c7294f7c4232Ed0DD46E6Ce", // CRITICAL: Replace with actual OCTO address for chainId 688688
+    //   name: "Octopus Token",
+    //   symbol: "OCTO",
+    //   decimals: 18,
+    //   // logoURI: "/tokens/octo.png"
+    // },
+    // {
+    //   chainId: 688688,
+    //   address: "0xF74903096433b0a948848d79E7c835402897e4e8", // CRITICAL: Replace with actual SAILOR address for chainId 688688
+    //   name: "Sailor Token",
+    //   symbol: "SAILOR",
+    //   decimals: 18,
+    //   // logoURI: "/tokens/sailor.png"
+    // }
   ]
+};
+
+// Faucet-specific token list
+const faucetTokenSymbols = ["GOCTO", "INFI", "PHRS"];
+export const FAUCET_PAGE_TOKEN_LIST: TokenList = {
+  name: 'Faucet Page Token List',
+  tokens: DEFAULT_TOKEN_LIST.tokens.filter(token => 
+    token.chainId === 688688 && faucetTokenSymbols.includes(token.symbol)
+  )
 };
 
 // Popular token addresses that we want to prioritize in search results
@@ -383,13 +406,14 @@ export function addToRecentTokens(token: TokenInfo): void {
 export async function getUserPortfolioTokens(
   address: string | undefined,
   chainId: number,
-  provider: ethers.Provider
+  provider: ethers.Provider // provider might be needed if we were to fetch actual balances here
 ): Promise<TokenInfo[]> {
   if (!address) return [];
   
-  // In a real implementation, this would query the blockchain or an indexer
-  // For demo purposes, return a subset of the default list
-  return DEFAULT_TOKEN_LIST.tokens
-    .filter(token => token.chainId === chainId)
-    .slice(0, 3);
+  // This function is a mock. In a real app, you would query an indexer or
+  // fetch on-chain balances for tokens the user might hold.
+  // For now, it returns all tokens from DEFAULT_TOKEN_LIST for the given chainId.
+  // The swap component would then be responsible for fetching actual balances for these tokens.
+  console.log(`getUserPortfolioTokens: Returning all default tokens for chain ${chainId} for user ${address}. Balance fetching is separate.`);
+  return DEFAULT_TOKEN_LIST.tokens.filter(token => token.chainId === chainId);
 } 

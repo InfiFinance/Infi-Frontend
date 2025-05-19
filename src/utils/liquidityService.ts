@@ -36,16 +36,6 @@ const ERC20_ABI = [
   'function allowance(address owner, address spender) view returns (uint256)'
 ];
 
-// Contract addresses for our DEX
-const CONTRACTS = {
-  factory: '0x5f37a6Ea51351BBBED8bD7Ed78EBa923B8D60897',
-  nonfungiblePositionManager: '0xA5ae22A0364c461Ee83868F12fc09616295925aA',
-  weth9: '0xe356046C34B8e989E6a311FE6478E2736937699D',
-  swapRouter: '0x11F22a8a07215d1691175A67cDf6630E874Bb17b',
-  nftDescriptor: '0x217755D961eAcD4f5dEcd922d8F3e3dFbe053E19',
-  tokenDescriptor: '0xBa42231Bd6C12547dFe82dBA830B49581305fedD'
-};
-
 export interface CreatePoolParams {
   token0: TokenInfo;
   token1: TokenInfo;
@@ -184,14 +174,14 @@ export async function approveTokens(
     const amount0Value = ethers.parseUnits(amount0Desired, token0.decimals);
     const amount1Value = ethers.parseUnits(amount1Desired, token1.decimals);
     
-    const allowance0 = await token0Contract.allowance(signerAddress, CONTRACTS.nonfungiblePositionManager);
-    const allowance1 = await token1Contract.allowance(signerAddress, CONTRACTS.nonfungiblePositionManager);
+    const allowance0 = await token0Contract.allowance(signerAddress, ADDRESSES.nonfungiblePositionManager);
+    const allowance1 = await token1Contract.allowance(signerAddress, ADDRESSES.nonfungiblePositionManager);
     
     // Approve tokens if needed
     if (allowance0 < amount0Value) {
       console.log(`Approving ${token0.symbol} for position manager...`);
       const tx0 = await token0Contract.approve(
-        CONTRACTS.nonfungiblePositionManager, 
+        ADDRESSES.nonfungiblePositionManager,
         amount0Value,
         {
           gasLimit: 200000,
@@ -205,7 +195,7 @@ export async function approveTokens(
     if (allowance1 < amount1Value) {
       console.log(`Approving ${token1.symbol} for position manager...`);
       const tx1 = await token1Contract.approve(
-        CONTRACTS.nonfungiblePositionManager, 
+        ADDRESSES.nonfungiblePositionManager,
         amount1Value,
         {
           gasLimit: 200000,
@@ -322,7 +312,7 @@ export const LiquidityService = {
       // Get signer directly 
       const signer = await provider.getSigner();
       const factoryAddress = ADDRESSES.factory;
-      const positionManagerAddress = CONTRACTS.nonfungiblePositionManager;
+      const positionManagerAddress = ADDRESSES.nonfungiblePositionManager;
       
       // Sort tokens and get addresses
       const [sortedToken0Address, sortedToken1Address] = sortTokens(
@@ -599,7 +589,7 @@ export const LiquidityService = {
       try {
         // Update contract with burn function in the ABI
         const positionManagerWithBurn = new ethers.Contract(
-          CONTRACTS.nonfungiblePositionManager,
+          ADDRESSES.nonfungiblePositionManager,
           [
             ...positionManager.interface.fragments,
             'function burn(uint256 tokenId) external payable'
@@ -647,7 +637,7 @@ export const LiquidityService = {
     try {
       const signer = await provider.getSigner();
       const positionManager = new ethers.Contract(
-        CONTRACTS.nonfungiblePositionManager,
+        ADDRESSES.nonfungiblePositionManager,
         [
           'function balanceOf(address owner) external view returns (uint256)',
           'function tokenOfOwnerByIndex(address owner, uint256 index) external view returns (uint256)',
@@ -714,7 +704,7 @@ export const LiquidityService = {
     try {
       const signer = await provider.getSigner();
       const positionManager = new ethers.Contract(
-        CONTRACTS.nonfungiblePositionManager,
+        ADDRESSES.nonfungiblePositionManager,
         [
           'function collect(tuple(uint256 tokenId, address recipient, uint128 amount0Max, uint128 amount1Max) params) external payable returns (uint256 amount0, uint256 amount1)'
         ],
