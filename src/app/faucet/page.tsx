@@ -13,7 +13,8 @@ export default function TestnetTokens() {
   const { isConnected, address } = useAppKitAccount();
   const [isRequesting, setIsRequesting] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();
-  const [selectedToken, setSelectedToken] = useState<TokenInfo | null>(FAUCET_PAGE_TOKEN_LIST.tokens[0] || null);
+  const availableTokens = FAUCET_PAGE_TOKEN_LIST.tokens.filter(token => token.symbol !== 'PHRS');
+  const [selectedToken, setSelectedToken] = useState<TokenInfo | null>(availableTokens[0] || null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [cooldowns, setCooldowns] = useState<{ [key: string]: number }>({}); // Stores remaining hours
 
@@ -58,12 +59,12 @@ export default function TestnetTokens() {
   }, [address, updateAndStoreCooldowns]);
 
   useEffect(() => {
-    if (FAUCET_PAGE_TOKEN_LIST.tokens.length > 0 && !selectedToken) {
-      setSelectedToken(FAUCET_PAGE_TOKEN_LIST.tokens[0]);
-    } else if (selectedToken && !FAUCET_PAGE_TOKEN_LIST.tokens.find(t => t.symbol === selectedToken.symbol)) {
-      setSelectedToken(FAUCET_PAGE_TOKEN_LIST.tokens[0] || null);
+    if (availableTokens.length > 0 && !selectedToken) {
+      setSelectedToken(availableTokens[0]);
+    } else if (selectedToken && !availableTokens.find(t => t.symbol === selectedToken.symbol)) {
+      setSelectedToken(availableTokens[0] || null);
     }
-  }, [selectedToken]);
+  }, [selectedToken, availableTokens]);
 
   const formatTimeRemaining = (hours: number) => {
     if (hours <= 0) return "Ready";
@@ -81,6 +82,15 @@ export default function TestnetTokens() {
       messageApi.error('Please select a token');
       return;
     }
+
+    // Temporarily disable PHRS token requests for testing
+    // if (selectedToken.symbol === 'PHRS') {
+    //   messageApi.info({
+    //     content: 'PHRS token requests are temporarily disabled for testing.',
+    //     duration: 5,
+    //   });
+    //   return;
+    // }
 
     // Client-side cooldown check before sending request
     const now = Date.now();
@@ -111,7 +121,13 @@ export default function TestnetTokens() {
       if (data.results && Array.isArray(data.results)) {
         data.results.forEach((result: any) => {
           if (result.status === 'success') {
-            const amount = selectedToken.symbol === 'PHRS' ? '0.1' : '100';
+            // const amount = selectedToken.symbol === 'PHRS' ? '0.1' : '100';
+            let amount = '100'; // Default amount
+            if (selectedToken.symbol === 'PHRS') {
+              // This part will effectively be skipped due to the check above,
+              // but commenting out the specific PHRS amount logic as requested.
+              // amount = '0.1'; 
+            }
             messageApi.success({ 
               content: `${amount} ${result.token} minted successfully! Tx: ${result.txHash.substring(0, 10)}...`, 
               duration: 5 
@@ -151,7 +167,7 @@ export default function TestnetTokens() {
     }
   };
 
-  const tokenMenuItems = (FAUCET_PAGE_TOKEN_LIST.tokens as TokenInfo[]).map(token => ({
+  const tokenMenuItems = availableTokens.map(token => ({
     key: token.symbol,
     label: (
       <div className="flex items-center gap-2">
@@ -199,7 +215,7 @@ export default function TestnetTokens() {
                     selectable: true,
                     selectedKeys: [selectedToken?.symbol || ''],
                     onClick: ({ key }) => {
-                      const token = (FAUCET_PAGE_TOKEN_LIST.tokens as TokenInfo[]).find(t => t.symbol === key);
+                      const token = availableTokens.find(t => t.symbol === key);
                       if (token) setSelectedToken(token);
                       setDropdownOpen(false);
                     },
@@ -269,7 +285,7 @@ export default function TestnetTokens() {
                 <ul className="text-gray-400 text-sm space-y-1">
                   <li>GOCTO: 100 tokens</li>
                   <li>INFI: 100 tokens</li>
-                  <li>PHRS: 0.1 tokens</li>
+                  {/* <li>PHRS: 0.1 tokens</li> */}
                 </ul>
               </div>
 
