@@ -13,6 +13,8 @@ export default function TestnetTokens() {
   const { isConnected, address } = useAppKitAccount();
   const [isRequesting, setIsRequesting] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();
+  // const [selectedToken, setSelectedToken] = useState<TokenInfo | null>(FAUCET_PAGE_TOKEN_LIST.tokens[0] || null);
+
   const availableTokens = FAUCET_PAGE_TOKEN_LIST.tokens.filter(token => token.symbol !== 'PHRS');
   const [selectedToken, setSelectedToken] = useState<TokenInfo | null>(availableTokens[0] || null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -59,6 +61,12 @@ export default function TestnetTokens() {
   }, [address, updateAndStoreCooldowns]);
 
   useEffect(() => {
+  //   if (FAUCET_PAGE_TOKEN_LIST.tokens.length > 0 && !selectedToken) {
+  //     setSelectedToken(FAUCET_PAGE_TOKEN_LIST.tokens[0]);
+  //   } else if (selectedToken && !FAUCET_PAGE_TOKEN_LIST.tokens.find(t => t.symbol === selectedToken.symbol)) {
+  //     setSelectedToken(FAUCET_PAGE_TOKEN_LIST.tokens[0] || null);
+  //   }
+  // }, [selectedToken]);
     if (availableTokens.length > 0 && !selectedToken) {
       setSelectedToken(availableTokens[0]);
     } else if (selectedToken && !availableTokens.find(t => t.symbol === selectedToken.symbol)) {
@@ -167,6 +175,7 @@ export default function TestnetTokens() {
     }
   };
 
+  // const tokenMenuItems = (FAUCET_PAGE_TOKEN_LIST.tokens as TokenInfo[]).map(token => ({
   const tokenMenuItems = availableTokens.map(token => ({
     key: token.symbol,
     label: (
@@ -215,6 +224,7 @@ export default function TestnetTokens() {
                     selectable: true,
                     selectedKeys: [selectedToken?.symbol || ''],
                     onClick: ({ key }) => {
+                      // const token = (FAUCET_PAGE_TOKEN_LIST.tokens as TokenInfo[]).find(t => t.symbol === key);
                       const token = availableTokens.find(t => t.symbol === key);
                       if (token) setSelectedToken(token);
                       setDropdownOpen(false);
