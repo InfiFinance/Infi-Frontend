@@ -81,7 +81,7 @@ export const DEFAULT_TOKEN_LIST = {
       address: "0xAD902CF99C2dE2f1Ba5ec4D642Fd7E49cae9EE37", // CRITICAL: Replace with actual USDC address for chainId 688688
       name: "USD Coin",
       symbol: "USDC",
-      decimals: 6,
+      decimals: 18,
       // logoURI: "/tokens/usdc.png"
     },
     {
@@ -89,7 +89,7 @@ export const DEFAULT_TOKEN_LIST = {
       address: "0xEd59De2D7ad9C043442e381231eE3646FC3C2939", // CRITICAL: Replace with actual USDT address for chainId 688688
       name: "Tether USD",
       symbol: "USDT",
-      decimals: 6,
+      decimals: 18,
       // logoURI: "/tokens/usdt.png"
     },
     {
