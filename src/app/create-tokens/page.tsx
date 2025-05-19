@@ -1,10 +1,21 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { message } from 'antd';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { ethers } from 'ethers';
 import MyTokenArtifact from '@/contract/abis/Token.json';
+import { CopyOutlined } from '@ant-design/icons';
+
+// Define a type for the created token data
+interface CreatedToken {
+  name: string;
+  symbol: string;
+  address: string;
+  imageUrl?: string; // Optional: if you want to store and display the image later
+}
+
+const LOCAL_STORAGE_CREATED_TOKENS_KEY = 'createdTokensByUser';
 
 export default function CreateTokens() {
   const { isConnected, address } = useAppKitAccount();
@@ -16,6 +27,30 @@ export default function CreateTokens() {
   const [tokenSymbol, setTokenSymbol] = useState('');
   const [tokenImage, setTokenImage] = useState('');
   const [isValidImageUrl, setIsValidImageUrl] = useState(false);
+
+  // State for displaying created tokens
+  const [createdTokens, setCreatedTokens] = useState<CreatedToken[]>([]);
+  const [isTokenListVisible, setIsTokenListVisible] = useState(false);
+
+  // Load created tokens from local storage when address changes
+  useEffect(() => {
+    if (address) {
+      const storedData = localStorage.getItem(LOCAL_STORAGE_CREATED_TOKENS_KEY);
+      if (storedData) {
+        try {
+          const allUserTokens = JSON.parse(storedData);
+          setCreatedTokens(allUserTokens[address.toLowerCase()] || []);
+        } catch (e) {
+          console.error("Error parsing created tokens from local storage:", e);
+          setCreatedTokens([]);
+        }
+      } else {
+        setCreatedTokens([]);
+      }
+    } else {
+      setCreatedTokens([]); // Clear list if no address
+    }
+  }, [address]);
 
   const validateImageUrl = (url: string) => {
     try {
@@ -122,10 +157,43 @@ export default function CreateTokens() {
         duration: 10
       });
 
+      // --- Store created token in local storage ---
+      if (address && contractAddress) {
+        const newToken: CreatedToken = {
+          name: tokenName,
+          symbol: tokenSymbol,
+          address: contractAddress,
+          imageUrl: tokenImage // Storing the image URL as well
+        };
+        try {
+          const storedData = localStorage.getItem(LOCAL_STORAGE_CREATED_TOKENS_KEY);
+          let allUserTokens = storedData ? JSON.parse(storedData) : {};
+          
+          // Ensure there's an array for the current user
+          const userSpecificAddress = address.toLowerCase(); // Use a variable for clarity
+          if (!allUserTokens[userSpecificAddress]) {
+            allUserTokens[userSpecificAddress] = [];
+          }
+          
+          // Add the new token to this user's array
+          allUserTokens[userSpecificAddress].push(newToken);
+          
+          localStorage.setItem(LOCAL_STORAGE_CREATED_TOKENS_KEY, JSON.stringify(allUserTokens));
+          
+          // Update state with the complete list for the current user from the updated allUserTokens object
+          setCreatedTokens(allUserTokens[userSpecificAddress]); 
+        } catch (e) {
+          console.error("Error saving token to local storage:", e);
+          messageApi.error("Failed to save token details locally. Deployment was successful.");
+        }
+      }
+      // --- End store token ---
+
       // Optionally, you can clear the form or redirect the user
-      // setTokenName('');
-      // setTokenSymbol('');
-      // setTokenImage('');
+      setTokenName('');
+      setTokenSymbol('');
+      setTokenImage('');
+      setIsValidImageUrl(false);
 
     } catch (error: any) {
       console.error("Deployment failed:", error);
@@ -234,8 +302,57 @@ export default function CreateTokens() {
                     : 'Create Token'}
               </button>
 
+              {/* Collapsible Created Tokens Section - Moved inside the card */}
+              {isConnected && address && (
+                <div className="mt-6 pt-6 border-t border-[#1b2131]">
+                  <button 
+                    onClick={() => setIsTokenListVisible(!isTokenListVisible)}
+                    className="flex justify-between items-center w-full text-left text-white font-medium mb-3 hover:text-blue-400 transition-colors"
+                  >
+                    <span>Your Created Tokens</span>
+                    <span className={`transform transition-transform duration-200 ${isTokenListVisible ? 'rotate-180' : ''}`}>▼</span>
+                  </button>
+                  {isTokenListVisible && (
+                    createdTokens.length > 0 ? (
+                      <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+                        {createdTokens.map((token, index) => (
+                          <div key={index} className="bg-[#171f2e] rounded-lg p-3 border border-[#2c3552]">
+                            <div className="flex items-center">
+                              {token.imageUrl && (
+                                <img 
+                                  src={token.imageUrl} 
+                                  alt={token.name} 
+                                  className="w-7 h-7 rounded-full mr-2.5 object-cover" 
+                                  onError={(e) => (e.currentTarget.style.display = 'none')}
+                                />
+                              )}
+                              <div className="flex-grow min-w-0">
+                                <h5 className="text-sm font-semibold text-white truncate">{token.name} ({token.symbol})</h5>
+                                <p className="text-xs text-gray-400 break-all">{token.address}</p>
+                              </div>
+                              <button 
+                                onClick={() => {
+                                  navigator.clipboard.writeText(token.address);
+                                  messageApi.success('Token address copied!');
+                                }}
+                                className="ml-2 text-gray-400 hover:text-white flex-shrink-0"
+                                title="Copy address"
+                              >
+                                <CopyOutlined />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-gray-400 text-sm">You haven't created any tokens yet.</p>
+                    )
+                  )}
+                </div>
+              )}
+
               {/* Instructions */}
-              <div className="space-y-3">
+              <div className="space-y-3 mt-6 pt-6 border-t border-[#1b2131]">
                 <h5 className="text-white font-medium">Instructions</h5>
                 <ul className="text-gray-400 text-sm space-y-2">
                   <li className="flex items-start">
@@ -256,7 +373,7 @@ export default function CreateTokens() {
                   </li>
                   <li className="flex items-start">
                     <span className="mr-2">5.</span>
-                    Once created, go to "Create Pool" to add liquidity and make your token tradeable
+                    Once created, copy the token address and paste it in the "create pool" page another token to make your token tradeable
                   </li>
                 </ul>
               </div>
