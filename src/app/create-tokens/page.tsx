@@ -7,6 +7,7 @@ import { ethers } from 'ethers';
 import MyTokenArtifact from '@/contract/abis/Token.json';
 import { CopyOutlined } from '@ant-design/icons';
 
+// todo PHRS fa
 // Define a type for the created token data
 interface CreatedToken {
   name: string;
