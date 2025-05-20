@@ -31,6 +31,9 @@ export default async function RootLayout({
   const cookies = headersObj.get('cookie')  
   return (
     <html lang="en">
+      <head>
+        <link rel="preload" href="/bg1.jpg" as="image" />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

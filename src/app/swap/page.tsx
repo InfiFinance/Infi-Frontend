@@ -983,7 +983,7 @@ export default function Swap() {
                     ? (tokenOneAmount && parseFloat(tokenOneAmount) > 0)
                       ? (tokenOneAllowance && BigInt(tokenOneAllowance.toString()) >= ethers.parseUnits(tokenOneAmount || "0", tokenOne.decimals))
                         ? "bg-blue-600 text-white hover:bg-blue-700 cursor-pointer" // Swap
-                        : "bg-orange-500 text-white hover:bg-orange-600 cursor-pointer" // Approve & Swap
+                        : "bg-blue-600 text-white hover:bg-blue-700 cursor-pointer" // Approve & Swap - colour changed for now
                       : "bg-gray-700 text-gray-400 cursor-not-allowed" // Enter an amount
                     : "bg-blue-600 text-white hover:bg-blue-700 cursor-pointer" // Connect Wallet
             }`}

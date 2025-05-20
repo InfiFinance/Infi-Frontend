@@ -53,6 +53,7 @@ body {
   -moz-osx-font-smoothing: grayscale;
   height: 100vh; /* Changed from min-height */
   width: 100vw;
+  background-color: #070815; /* Placeholder background */
   /* background-color: rgb(25, 33, 52) !important; */ /* Removed */
   /* background: rgb(25, 33, 52); */ /* Removed */
   /* background: linear-gradient( */
