@@ -43,7 +43,7 @@ export default function Swap() {
   const [tokenOneAmount, setTokenOneAmount] = useState<string>('');
   const [tokenTwoAmount, setTokenTwoAmount] = useState<string>('');
   const [tokenOne, setTokenOne] = useState<TokenInfo>(DEFAULT_TOKEN_LIST.tokens.find(t => t.symbol === 'GOCTO') || DEFAULT_TOKEN_LIST.tokens[0]);
-  const [tokenTwo, setTokenTwo] = useState<TokenInfo>(DEFAULT_TOKEN_LIST.tokens.find(t => t.symbol === 'USDC') || DEFAULT_TOKEN_LIST.tokens[1]);
+  const [tokenTwo, setTokenTwo] = useState<TokenInfo>(DEFAULT_TOKEN_LIST.tokens.find(t => t.symbol === 'INFI') || DEFAULT_TOKEN_LIST.tokens[1]);
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [changeToken, setChangeToken] = useState<number>(1);
   const [routePath, setRoutePath] = useState<string[]>([]);
@@ -60,6 +60,10 @@ export default function Swap() {
   // Balance states
   const [tokenOneBalance, setTokenOneBalance] = useState<string | null>(null);
   const [tokenTwoBalance, setTokenTwoBalance] = useState<string | null>(null);
+
+  // New state for token allowance and approval loading
+  const [tokenOneAllowance, setTokenOneAllowance] = useState<ethers.BigNumberish | null>(null);
+  const [isApproving, setIsApproving] = useState<boolean>(false);
 
   // Create read-only provider and router instances, memoized to prevent recreation
   const readOnlyProvider = useMemo(() => new JsonRpcProvider(READ_ONLY_RPC_URL), []);
@@ -172,19 +176,6 @@ export default function Swap() {
   // Note: Direct use of 'InfiRouter' for transactions will be replaced with calls needing a signer inside fetchDex
 
   const { open } = useAppKit(); // Use 'open' provided by useAppKit
-
-  async function query(tknFrom: string, tknTo: string, amountIn: any) {
-    const maxHops = 3
-    const gasPrice = ethers.parseUnits('225', 'gwei')
-    return readOnlyRouter.findBestPathWithGas(
-      amountIn,
-      tknFrom,
-      tknTo,
-      maxHops,
-      gasPrice,
-      { gasLimit: 1e9 }
-    )
-  }
 
   const handleSlippage = (e: any) => {
     setSlippage(e.target.value);
@@ -333,18 +324,20 @@ export default function Swap() {
       // Ensure provider and signer are ready
       if (!ethersProvider) {
         messageApi.error('Please connect your wallet to perform a swap.');
+        setIsProcessingSwap(false); // Reset processing state
         return;
       }
       const signer = await ethersProvider.getSigner();
       if (!signer) {
         messageApi.error('Signer not available.');
+        setIsProcessingSwap(false); // Reset processing state
         return;
       }
       if (!tokenOneAmount || parseFloat(tokenOneAmount) <= 0) {
         messageApi.error('Please enter a valid amount to swap.');
+        setIsProcessingSwap(false); // Reset processing state
         return;
       }
-
 
       console.log("Fetching swap data for:", tokenOneAmount, tokenOne.symbol);
 
@@ -352,13 +345,13 @@ export default function Swap() {
       const amountInWei = ethers.parseUnits(tokenOneAmount, tokenOne.decimals);
 
       // 2. Query the router using the read-only instance first
-      // const queryRes = await query(tokenOne.address, tokenTwo.address, amountInWei); // Old query
       const queryRes = await callFindBestPath(readOnlyRouter, tokenOne.address, tokenTwo.address, amountInWei);
       console.log("Query Result:", queryRes);
 
       // Validate query response
       if (!queryRes || !queryRes.amounts || queryRes.amounts.length === 0 || !queryRes.path || !queryRes.adapters) {
         messageApi.error('Failed to get a valid swap route from the router.');
+        setIsProcessingSwap(false); // Reset processing state
         return;
       }
 
@@ -366,112 +359,59 @@ export default function Swap() {
       const expectedAmountOut = queryRes.amounts[queryRes.amounts.length - 1];
 
       // --- START SLIPPAGE CALCULATION ---
-      // Convert slippage percentage to basis points (e.g., 2.5% -> 250 bps)
-      const slippageBps = BigInt(Math.round(slippage * 100)); // Ensure slippage is treated as percentage
+      const slippageBps = BigInt(Math.round(slippage * 100));
       const BPS_DIVISOR = BigInt(10000);
-
-      // Calculate the minimum amount out considering slippage
-      // amountOutMin = expectedAmountOut * (10000 - slippageBps) / 10000
       const amountOutMinWithSlippage = (BigInt(expectedAmountOut) * (BPS_DIVISOR - slippageBps)) / BPS_DIVISOR;
-
-      console.log(`Expected Amount Out: ${ethers.formatUnits(expectedAmountOut, tokenTwo.decimals)} ${tokenTwo.symbol}`);
-      console.log(`Slippage: ${slippage}% (${slippageBps} bps)`);
       console.log(`Minimum Amount Out (Wei): ${amountOutMinWithSlippage.toString()}`);
-      console.log(`Minimum Amount Out: ${ethers.formatUnits(amountOutMinWithSlippage, tokenTwo.decimals)} ${tokenTwo.symbol}`);
       // --- END SLIPPAGE CALCULATION ---
 
-      const fee = 0; // Assuming fee is always 0 based on previous examples
+      const fee = 0; // Assuming fee is always 0
 
       // --- START GAS PRICE CALCULATION ---
-      let txOptions: { gasPrice?: bigint, gasLimit?: number } = {}; // Initialize empty overrides
+      let txOptions: { gasPrice?: bigint, gasLimit?: number } = {};
       try {
-
-
-
         const feeData = await ethersProvider.getFeeData();
         const baseGasPrice = feeData.gasPrice;
-
         if (baseGasPrice) {
-          console.log(`Base estimated gas price: ${ethers.formatUnits(baseGasPrice, 'gwei')} gwei`);
           if (transactionMode === 'fast') {
             const fastGasPrice = (baseGasPrice * BigInt(130)) / BigInt(100);
             txOptions.gasPrice = fastGasPrice;
-            console.log(`Using FAST gas price: ${ethers.formatUnits(fastGasPrice, 'gwei')} gwei`);
           } else {
-            txOptions.gasPrice = baseGasPrice; // Use default
-            console.log(`Using DEFAULT gas price: ${ethers.formatUnits(baseGasPrice, 'gwei')} gwei`);
+            txOptions.gasPrice = baseGasPrice;
           }
-        } else {
-          console.warn("Could not fetch gas price from provider. Wallet will use default.");
         }
       } catch (gasError) {
         console.warn("Error fetching fee data:", gasError);
       }
       // --- END GAS PRICE CALCULATION ---
 
-      // 4. Check allowance
-      const tokenContract = new ethers.Contract(
-        tokenOne.address,
-        [
-          "function approve(address spender, uint256 amount) public returns (bool)",
-          "function allowance(address owner, address spender) external view returns (uint256)"
-        ],
-        signer
-      )
+      // Approval logic is now handled by handleApproveMax / handleButtonClick
 
-      const allowance = await tokenContract.allowance(address, infiRouterAddress);
-      console.log("Current allowance (Wei):", allowance.toString());
-
-      // 5. Approve if necessary (Compare BigInts correctly)
-      if (allowance < amountInWei) {
-        console.log(`Allowance is ${allowance.toString()}, need ${amountInWei.toString()}. Approving...`);
-        messageApi.info('Approval required. Please confirm in your wallet.');
-        try {
-          // Keep existing gasLimit for approve, but add calculated gasPrice
-          const approveOptions = { ...txOptions, gasLimit: 100000 };
-          const approveTx = await (tokenContract.connect(signer) as ethers.Contract).approve(
-            infiRouterAddress,
-            amountInWei,
-            approveOptions // <<< Pass combined options
-          );
-          console.log("Approval tx sent:", approveTx.hash);
-          await approveTx.wait();
-          console.log("Approval confirmed.");
-          messageApi.success('Approval successful!');
-        } catch (approveError: any) {
-          console.error('Error during approval:', approveError);
-          messageApi.error(`Approval failed: ${approveError.reason || approveError.message}`);
-          return; // Stop if approval fails
-        }
-      } else {
-        console.log("Sufficient allowance already granted.");
-      }
-
-      // 6. Prepare arguments for swapNoSplit
+      // Prepare arguments for swapNoSplit
       const pathCopy = [...queryRes.path];
       const adaptersCopy = [...queryRes.adapters];
       const tradeArgs = [
-        amountInWei,              // amountIn (BigInt)
-        amountOutMinWithSlippage, // <<< Use amount calculated with slippage
-        pathCopy,                 // path (copied array)
-        adaptersCopy              // adapters (copied array)
+        amountInWei,
+        amountOutMinWithSlippage,
+        pathCopy,
+        adaptersCopy
       ];
 
       console.log("Executing swap with args:", tradeArgs);
       messageApi.info('Executing swap. Please confirm in your wallet.');
 
-      // 7. Execute Swap (Use connected router instance with signer)
       const connectedRouter = getConnectedRouter();
       if (!connectedRouter) {
         messageApi.error("Failed to get connected router instance.");
+        setIsProcessingSwap(false); // Reset processing state
         return;
       }
-      // Connect the signer for the transaction
+
       const swapTx = await (connectedRouter.connect(signer) as ethers.Contract).swapNoSplit(
         tradeArgs,
-        signer.address, // recipient
+        signer.address,
         fee,
-        txOptions // <<< Pass options with calculated gasPrice
+        txOptions
       );
 
       console.log("Swap tx sent:", swapTx.hash);
@@ -482,49 +422,115 @@ export default function Swap() {
 
       if (receipt.status === 1) {
         messageApi.success({ content: 'Swap successful!', key: 'swapStatus', duration: 5 });
-        // --- Update output amount ---
-        // Option 1: Use the estimated amount from the query (less accurate after execution)
-        // const estimatedOutputFormatted = ethers.formatUnits(amountOutMinWithSlippage, tokenTwo.decimals);
-        // setTokenTwoAmount(parseFloat(estimatedOutputFormatted).toFixed(6));
-
-        // Option 2: Try to parse logs from the receipt (More Robust)
-        // This requires knowing the exact event emitted by the router/adapter upon swap completion
-        // e.g., const swapEvent = receipt.events?.find(e => e.event === 'Swap');
-        // if (swapEvent && swapEvent.args) {
-        //    const actualAmountOut = swapEvent.args.amountOut; // Adjust names based on actual event
-        //    setTokenTwoAmount(ethers.utils.formatUnits(actualAmountOut, tokenTwo.decimals).toFixed(6));
-        // }
-
-        // Clear input amount after successful swap?
         setTokenOneAmount('');
-        setTokenTwoAmount('');
-
-        // --- Re-fetch balances after successful swap ---
+        setTokenTwoAmount('');  
         if (address && ethersProvider) {
           updateTokenBalances(address, ethersProvider, tokenOne, tokenTwo);
+          // Refresh allowance after successful swap too, in case it was a partial approval before somehow
+          const tokenContract = new ethers.Contract(tokenOne.address, ["function allowance(address owner, address spender) external view returns (uint256)"], ethersProvider);
+          const currentAllowance = await tokenContract.allowance(address, infiRouterAddress);
+          setTokenOneAllowance(currentAllowance);
         }
-        // --- End Re-fetch --- 
-
       } else {
         messageApi.error({ content: 'Swap transaction failed (reverted).', key: 'swapStatus', duration: 5 });
       }
-
-
     } catch (error: any) {
       console.error('Error during swap process:', error);
       messageApi.error({ content: `Swap failed: ${error.reason || error.message || 'Unknown error'}`, key: 'swapStatus', duration: 5 });
-      // Reset loading message if swap fails before sending
-      messageApi.destroy('swapStatus');
     } finally {
       setIsProcessingSwap(false);
     }
   };
 
-  const handleButtonClick = () => {
+  const handleApproveMax = async () => {
+    if (!ethersProvider || !address || !tokenOne) {
+      messageApi.error('Cannot approve: Wallet not connected or token not selected.');
+      return false;
+    }
+    if (!tokenOneAmount || parseFloat(tokenOneAmount) <= 0) {
+      messageApi.error('Please enter a valid amount before approving.');
+      return false;
+    }
+
+    setIsApproving(true);
+    messageApi.info('Requesting maximum approval for ' + tokenOne.symbol + '. Please confirm in your wallet.');
+
+    try {
+      const signer = await ethersProvider.getSigner();
+      const tokenContract = new ethers.Contract(
+        tokenOne.address,
+        [
+          "function approve(address spender, uint256 amount) public returns (bool)",
+          "function allowance(address owner, address spender) external view returns (uint256)" // Include allowance in ABI
+        ],
+        signer // Initialized with signer for approve and subsequent allowance read
+      );
+
+      // Prepare gas options for approval
+      let approveTxOptions: { gasPrice?: bigint, gasLimit?: number } = { gasLimit: 100000 }; // Default gas limit for approve
+      try {
+        const feeData = await ethersProvider.getFeeData();
+        const baseGasPrice = feeData.gasPrice;
+        if (baseGasPrice) {
+          if (transactionMode === 'fast') {
+            approveTxOptions.gasPrice = (baseGasPrice * BigInt(130)) / BigInt(100);
+          } else {
+            approveTxOptions.gasPrice = baseGasPrice;
+          }
+        }
+      } catch (gasError) {
+        console.warn("Error fetching fee data for approval:", gasError);
+      }
+
+      const approveTx = await tokenContract.approve(
+        infiRouterAddress,
+        ethers.MaxUint256, // Approve for maximum amount
+        approveTxOptions
+      );
+
+      console.log("Max approval tx sent:", approveTx.hash);
+      await approveTx.wait();
+      console.log("Max approval confirmed.");
+      messageApi.success('Max approval successful for ' + tokenOne.symbol + '!');
+
+      // Refresh allowance state after successful approval using the same contract instance
+      const updatedAllowance = await tokenContract.allowance(address, infiRouterAddress);
+      setTokenOneAllowance(updatedAllowance);
+      console.log("Refreshed allowance after approval:", updatedAllowance.toString());
+      return true;
+    } catch (approveError: any) {
+      console.error('Error during max approval:', approveError);
+      messageApi.error(`Max approval failed: ${approveError.reason || approveError.message}`);
+      return false;
+    } finally {
+      setIsApproving(false);
+    }
+  };
+
+  const handleButtonClick = async () => {
     if (!isConnected) {
-      open?.(); // Try using the open function provided by useAppKit
+      open?.();
+      return;
+    }
+
+    if (!tokenOneAmount || parseFloat(tokenOneAmount) <= 0) {
+      messageApi.error('Please enter a valid amount.');
+      return;
+    }
+
+    const amountInWei = ethers.parseUnits(tokenOneAmount, tokenOne.decimals);
+    const currentAllowanceBigInt = tokenOneAllowance ? BigInt(tokenOneAllowance.toString()) : BigInt(0);
+
+    if (currentAllowanceBigInt < amountInWei) {
+      // Needs approval
+      const approvalSuccessful = await handleApproveMax();
+      if (approvalSuccessful) {
+        // If approval was successful, proceed to swap
+        fetchDex();
+      }
     } else {
-      fetchDex(); // Otherwise, proceed with the swap
+      // Sufficient allowance, proceed to swap
+      fetchDex();
     }
   };
 
@@ -682,6 +688,31 @@ export default function Swap() {
       setTokenTwoBalance(null);
     }
   }, [isConnected, address, ethersProvider, tokenOne.address, tokenTwo.address, tokenOne.decimals, tokenTwo.decimals]); // Dependencies remain the same
+
+  // Effect to check allowance for tokenOne when relevant dependencies change
+  useEffect(() => {
+    const checkAllowance = async () => {
+      if (!ethersProvider || !address || !tokenOne) {
+        setTokenOneAllowance(null);
+        return;
+      }
+      try {
+        const tokenContract = new ethers.Contract(
+          tokenOne.address,
+          ["function allowance(address owner, address spender) external view returns (uint256)"],
+          ethersProvider
+        );
+        const currentAllowance = await tokenContract.allowance(address, infiRouterAddress);
+        setTokenOneAllowance(currentAllowance);
+        console.log("Current allowance for", tokenOne.symbol, ":", currentAllowance.toString());
+      } catch (error) {
+        console.error("Error fetching allowance:", error);
+        setTokenOneAllowance(null);
+      }
+    };
+
+    checkAllowance();
+  }, [ethersProvider, address, tokenOne]);
 
   // Progress bar animation - runs every 15 seconds
   useEffect(() => {
@@ -940,24 +971,32 @@ export default function Swap() {
           {/* Swap Button */}
           <button
             onClick={handleButtonClick}
-            disabled={isProcessingSwap || (isConnected && (!tokenOneAmount || parseFloat(tokenOneAmount) <= 0))}
+            disabled={isApproving || isProcessingSwap || (isConnected && (!tokenOneAmount || parseFloat(tokenOneAmount) <= 0))}
             className={`w-full py-3 rounded-lg font-medium mt-2 ${
-              isProcessingSwap 
-                ? "bg-gray-700 text-gray-400 cursor-not-allowed" 
-                : isConnected 
-                  ? (tokenOneAmount && parseFloat(tokenOneAmount) > 0)
-                    ? "bg-blue-600 text-white hover:bg-blue-700 cursor-pointer"
-                    : "bg-gray-700 text-gray-400 cursor-not-allowed"
-                  : "bg-blue-600 text-white hover:bg-blue-700 cursor-pointer"
+              isApproving
+                ? "bg-yellow-600 text-white cursor-not-allowed"
+                : isProcessingSwap 
+                  ? "bg-gray-700 text-gray-400 cursor-not-allowed" 
+                  : isConnected 
+                    ? (tokenOneAmount && parseFloat(tokenOneAmount) > 0)
+                      ? (tokenOneAllowance && BigInt(tokenOneAllowance.toString()) >= ethers.parseUnits(tokenOneAmount || "0", tokenOne.decimals))
+                        ? "bg-blue-600 text-white hover:bg-blue-700 cursor-pointer" // Swap
+                        : "bg-orange-500 text-white hover:bg-orange-600 cursor-pointer" // Approve & Swap
+                      : "bg-gray-700 text-gray-400 cursor-not-allowed" // Enter an amount
+                    : "bg-blue-600 text-white hover:bg-blue-700 cursor-pointer" // Connect Wallet
             }`}
           >
-            {isProcessingSwap 
-              ? "Processing..." 
-              : isConnected 
-                ? (tokenOneAmount && parseFloat(tokenOneAmount) > 0) 
-                  ? "Swap" 
-                  : "Enter an amount"
-                : "Connect Wallet"
+            {isApproving
+              ? "Approving..."
+              : isProcessingSwap 
+                ? "Processing..." 
+                : isConnected 
+                  ? (tokenOneAmount && parseFloat(tokenOneAmount) > 0)
+                    ? (tokenOneAllowance && BigInt(tokenOneAllowance.toString()) >= ethers.parseUnits(tokenOneAmount || "0", tokenOne.decimals))
+                      ? "Swap" 
+                      : "Approve & Swap"
+                    : "Enter an amount"
+                  : "Connect Wallet"
             }
           </button>
 
