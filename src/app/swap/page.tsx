@@ -153,14 +153,14 @@ export default function Swap() {
   // Function to call the findBestPath method on a given router instance
   async function callFindBestPath(routerInstance: Contract, tknFrom: string, tknTo: string, amountIn: bigint) {
     const maxHops = 3
-    const gasPrice = ethers.parseUnits('225', 'gwei') // This might not be strictly necessary for read-only queries but kept for consistency
-    return routerInstance.findBestPathWithGas(
+    // const gasPrice = ethers.parseUnits('225', 'gwei') // This might not be strictly necessary for read-only queries but kept for consistency
+    return routerInstance.findBestPath(
       amountIn,
       tknFrom,
       tknTo,
       maxHops,
-      gasPrice,
-      { gasLimit: 1e9 } // Gas limit might also be less critical for static calls
+      // gasPrice,
+      // { gasLimit: 1e9 } // Gas limit might also be less critical for static calls
     )
   }
 
@@ -218,6 +218,8 @@ export default function Swap() {
         console.log(`Debounced query for: ${currentInputStr}`); // Logging
         // Use the read-only router for querying quotes
         const res = await callFindBestPath(readOnlyRouter, tokenOne.address, tokenTwo.address, amountInWei);
+
+        // console.log("res", res)
 
         if (res && res.amounts && res.amounts.length > 0) {
           const estimatedOutputWei = res.amounts[res.amounts.length - 1];
